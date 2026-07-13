@@ -206,3 +206,30 @@ You will likely be using a large LiPo battery (e.g., 3S 11.1V or 4S 14.8V) to po
 ### Why this specific setup will succeed:
 By mechanically mounting the Camera and the Flashlight on the **exact same Pan/Tilt bracket**, you completely bypass complex 3D offset mathematics. If the AI puts the drone in the center of the video frame, physics dictates the flashlight is pointing at it. The Hailo-8L provides the speed to see the drone, and the STM32's hardware timers provide the microscopic precision needed to aim a tight flashlight beam 100 meters away without jitter.
 
+For this specific project, **the 8 GB version is the absolute "sweet spot" and the one you should buy.** 
+
+Here is the exact engineering breakdown of why 8 GB is perfect, why 4 GB is too risky, and why the new 16 GB version is a waste of money for your use case.
+
+### How Your System Uses Memory
+It is a common misconception that AI needs massive amounts of system RAM. Because you are using the **Raspberry Pi AI Kit (Hailo-8L NPU)**, the NPU does 90% of the heavy mathematical lifting for the AI. However, the system RAM is still responsible for managing the video feed and the operating system.
+
+Here is what your memory budget will look like while the rover is actively hunting for drones:
+1.  **Raspberry Pi OS (64-bit):** ~1.0 GB to 1.5 GB just to run the background Linux system.
+2.  **Arducam 12MP Video Buffer:** ~1.0 GB to 1.5 GB. Processing high-resolution, uncompressed video frames at 30+ frames per second requires a large memory queue so the AI doesn't drop frames.
+3.  **Python, OpenCV, & Hailo SDK Overhead:** ~1.5 GB to 2.5 GB. OpenCV needs memory to draw the bounding boxes, calculate the coordinates, and communicate with the STM32.
+*   **Total RAM heavily utilized during operation:** ~3.5 GB to 5.5 GB.
+
+### Evaluating Your Options:
+
+**1. The 4 GB Version (Not Recommended)**
+While technically possible, 4 GB leaves you with zero headroom. If your Python script uses a little too much memory processing a video frame, the Pi will be forced to use "Swap Memory" (temporarily writing RAM data to the MicroSD card). **This will cause massive lag.** A 1-second lag in drone tracking means your flashlight will miss the target completely.
+
+**2. The 8 GB Version (Highly Recommended)**
+This is the perfect choice. You will comfortably use 4 to 5 GB of RAM, leaving 3 GB of completely free overhead. The system will never bottleneck, you will never drop video frames, and the real-time tracking will remain lightning-fast. It is the most cost-effective option for Edge AI robotics.
+
+**3. The 16 GB Version (Overkill - Do Not Buy)**
+Raspberry Pi officially released the 16 GB version in early 2025, but its price is significantly higher (around $120+ USD / €120+). You would only need 16 GB if you were trying to run a ChatGPT-style Large Language Model (LLM) locally, or if you were using it as a daily desktop PC replacement. For a dedicated, single-purpose tracking script utilizing an NPU accelerator, the extra 8 GB will sit completely empty and unused. 
+
+### Summary
+Save your money and **buy the 8 GB Raspberry Pi 5**. Use the money you save to invest in a high-quality Buck Converter to power the Pi properly, or a better battery for the rover!
+
