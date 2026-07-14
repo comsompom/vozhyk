@@ -233,3 +233,53 @@ Raspberry Pi officially released the 16 GB version in early 2025, but its price 
 ### Summary
 Save your money and **buy the 8 GB Raspberry Pi 5**. Use the money you save to invest in a high-quality Buck Converter to power the Pi properly, or a better battery for the rover!
 
+**Yes, absolutely!** In fact, using an iPhone as the "Brain and Eyes" for this project is a brilliant, highly modern solution. 
+
+Modern iPhones (iPhone 12 and newer) are actually **much more powerful than a Raspberry Pi 5**. They have built-in **Neural Engines (NPUs)** inside their Apple Silicon chips (A14, A15, A17, etc.) that are specifically designed to run AI object detection at blazing fast speeds while using very little battery.
+
+If you mount the iPhone on the Pan/Tilt bracket next to your flashlight, it completely replaces both the Raspberry Pi and the Arducam.
+
+Here is exactly how you can build the iPhone application and integrate it with your STM32 rover.
+
+---
+
+### 1. The Technology Stack (How to build the App)
+
+You don't need to invent the AI from scratch. You can use standard tools:
+*   **The AI Model:** Train a **YOLOv8** or **YOLOv10** model to detect drones on a PC.
+*   **Core ML Conversion:** Apple has a machine learning framework called **Core ML**. You can easily export a YOLO model into an Apple Core ML format (`.mlpackage`) using a single line of Python code on your computer.
+*   **The App Language:** Use **Swift** and Xcode (Apple's free development software) to write the app.
+*   **The Vision Framework:** Apple has built-in code libraries that automatically take your Core ML YOLO model, look at the iPhone's live camera feed, and draw bounding boxes around detected objects.
+
+### 2. How the iPhone talks to the STM32 (The Bridge)
+The iPhone will calculate that the drone is at pixel `X: -120, Y: 45`. But how does it send that to the STM32 to move the servos? 
+
+You will use **Bluetooth Low Energy (BLE)**.
+
+1.  **On the STM32:** You wire a cheap Bluetooth module (like an **HM-10** or **JDY-18**) to the STM32's UART (Serial) pins.
+2.  **In the iPhone App:** You use Apple's `CoreBluetooth` library in your Swift code. 
+3.  **The Loop:** 30 times a second, the iPhone camera spots the drone, calculates the coordinates, and sends a quick Bluetooth text string (e.g., `T:-120,45\n`) to the HM-10. The HM-10 passes it directly to the STM32, and the STM32 instantly moves the servos.
+
+### 3. The New System Architecture
+
+If you use the iPhone, your setup becomes beautifully simple:
+
+*   **The Remote (In your hands):** STM32 + LoRa 433MHz (Sends driving commands to the rover).
+*   **The Spinal Cord (On the Rover):** STM32 + LoRa 433MHz (Receives driving commands) + HM-10 Bluetooth (Receives targeting commands).
+*   **The Eyes & Brain (On the Pan/Tilt Mount):** The iPhone. It is clamped next to the pocket flashlight. It uses its camera to find the drone and sends targeting data over Bluetooth to the STM32 below it.
+
+### The Massive Advantages of Using an iPhone:
+1.  **Incredible Camera Quality:** iPhones have optical image stabilization (OIS), auto-focus, and amazing low-light sensors. It will see a tiny drone at 100 meters much better than an Arducam.
+2.  **No Wiring Headaches:** You don't have to deal with delicate MIPI CSI ribbon cables or power buck converters for the Raspberry Pi. The iPhone has its own battery and its own screen.
+3.  **Insane Computing Power:** The Apple Neural Engine can run YOLO object detection at 60 FPS without stuttering.
+4.  **Debugging:** You can see exactly what the AI is targeting in real-time on the iPhone screen while you stand next to the rover.
+
+### The "Reality Check" (Disadvantages):
+1.  **Overheating:** If you run heavy AI object detection using the camera on a hot summer day in direct sunlight, the iPhone screen will dim, and the phone might overheat after 20–30 minutes. (Keep it shaded).
+2.  **App Development:** To put an app on your own iPhone, you need a Mac computer to run Xcode. (Though you can use a free Apple Developer account to load it onto your phone for testing).
+3.  **Risk:** You are putting an expensive smartphone on a robotic rover. If the rover tips over, you risk cracking the iPhone screen.
+
+### Summary
+If you have a Mac and an iPhone, **this is the easiest and most powerful way to achieve high-end computer vision.** 
+Instead of fighting with Linux drivers on a Raspberry Pi, you simply write a Swift iOS app, clamp the phone to the servos, pair it to the STM32 via Bluetooth, and let Apple's incredible hardware do the heavy lifting!
+
