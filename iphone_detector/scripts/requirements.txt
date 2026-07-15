@@ -1,0 +1,5 @@
+# Pin NumPy < 2: PyTorch 2.0.x / TensorFlow / coremltools break with NumPy 2.x
+numpy>=1.23.5,<2.0
+torch>=2.0.0,<2.3
+ultralytics>=8.1.0
+coremltools>=7.0,<9.0

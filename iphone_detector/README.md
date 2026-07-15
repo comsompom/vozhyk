@@ -31,12 +31,16 @@ On first launch, allow **Camera**, **Bluetooth**, and **Location** (location is 
 
 ## Optional: Add YOLOv8n AI Model
 
-The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model:
+The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model.
+
+**Important:** use a project venv. Global NumPy 2.x breaks Core ML export (`Numpy is not available` / `_ARRAY_API not found`).
 
 ```bash
 cd iphone_detector
-pip install ultralytics coremltools
-python3 scripts/download_model.py
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r scripts/requirements.txt
+python scripts/download_model.py
 ```
 
 Then in Xcode: drag `DroneDetector/Models/YOLOv8n.mlpackage` into the project and ensure it is included in the **DroneDetector** target.
