@@ -43,9 +43,9 @@ pip install -r scripts/requirements.txt
 python scripts/download_model.py
 ```
 
-Then in Xcode: drag `DroneDetector/Models/YOLOv8n.mlpackage` into the project and ensure it is included in the **DroneDetector** target.
+Then in Xcode: if the model is not already listed under `DroneDetector/Models`, drag `DroneDetector/Models/YOLOv8n.mlpackage` into the project and ensure **Target Membership → DroneDetector** is checked. After a successful Run, the HUD should show **AI Model Ready** / `YOLOv8n Core ML`.
 
-YOLOv8n detects COCO classes including **airplane**, **bird**, and **kite** — useful proxies for drones until you train a custom drone-only model.
+YOLOv8n detects COCO classes including **airplane**, **bird**, and **kite** — useful proxies for drones until you train a custom drone-only model. The HUD labels these as possible aerial/drone detections.
 
 ## Radio Detection Notes
 

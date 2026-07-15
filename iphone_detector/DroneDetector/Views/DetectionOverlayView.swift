@@ -44,6 +44,8 @@ struct StatusHUDView: View {
     let cameraDetections: [VisionDetection]
     let radioSignals: [RadioSignal]
     let modelName: String
+    let modelLoaded: Bool
+    let modelLoadError: String?
     let radioStatus: String
 
     var body: some View {
@@ -66,6 +68,13 @@ struct StatusHUDView: View {
                     color: radioScanning ? .cyan : .gray
                 )
             }
+
+            statusPill(
+                title: modelLoaded ? "AI Model Ready" : "AI Model Missing",
+                systemImage: modelLoaded ? "brain.head.profile" : "exclamationmark.circle",
+                color: modelLoaded ? .mint : .orange
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if !cameraDetections.isEmpty {
                 hudCard(title: "Visual Detection", color: .green) {
@@ -106,6 +115,13 @@ struct StatusHUDView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let modelLoadError {
+                Text(modelLoadError)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(14)
         .background(.ultraThinMaterial)

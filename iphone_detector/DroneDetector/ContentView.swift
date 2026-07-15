@@ -41,6 +41,8 @@ struct ContentView: View {
                     cameraDetections: visionDetector.detections,
                     radioSignals: radioScanner.signals,
                     modelName: visionDetector.modelName,
+                    modelLoaded: visionDetector.isModelLoaded,
+                    modelLoadError: visionDetector.loadError,
                     radioStatus: radioScanner.statusMessage
                 )
                 Spacer()

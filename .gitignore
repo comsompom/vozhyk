@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# iPhone detector local export artifacts
+iphone_detector/.model_export/
+iphone_detector/.venv/
+iphone_detector/*.pt
+iphone_detector/yolov8n.pt
+
