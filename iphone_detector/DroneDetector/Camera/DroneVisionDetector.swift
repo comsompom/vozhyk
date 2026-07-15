@@ -3,7 +3,6 @@ import CoreML
 import Foundation
 import Vision
 
-@MainActor
 final class DroneVisionDetector: ObservableObject {
     @Published private(set) var detections: [VisionDetection] = []
     @Published private(set) var isModelLoaded = false
@@ -12,13 +11,21 @@ final class DroneVisionDetector: ObservableObject {
 
     private var visionModel: VNCoreMLModel?
     private var request: VNCoreMLRequest?
-    private var sequenceHandler = VNSequenceRequestHandler()
-    private var previousFrame: CVPixelBuffer?
-    private var frameCounter = 0
-    private let processEveryNFrames = 2
-    private let confidenceThreshold: Float = 0.25
 
-    /// COCO-80 labels used by YOLOv8n (indexes match model confidence channels).
+    private let inferenceQueue = DispatchQueue(
+        label: "com.vozhyk.drone-detector.inference",
+        qos: .userInitiated
+    )
+    private let stateQueue = DispatchQueue(label: "com.vozhyk.drone-detector.vision-state")
+
+    private var isYOLOBusy = false
+    private var previousLumaGrid: [Float]?
+    private var lastMotionPublish = Date.distantPast
+    private var lastDetectionPublish = Date.distantPast
+    private let confidenceThreshold: Float = 0.20
+    private let maxDetectionAge: TimeInterval = 0.25
+    private let motionGrid = 16
+
     private static let cocoClassNames: [String] = [
         "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
         "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
@@ -32,7 +39,6 @@ final class DroneVisionDetector: ObservableObject {
         "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
     ]
 
-    /// Aerial / drone-proxy COCO classes (and common synonyms).
     private let aerialLabels: Set<String> = [
         "airplane", "aircraft", "bird", "kite", "drone", "uav", "quadcopter", "flying"
     ]
@@ -41,30 +47,93 @@ final class DroneVisionDetector: ObservableObject {
         loadModel()
     }
 
-    func process(sampleBuffer: CMSampleBuffer) {
+    /// Called from the camera video queue. Keeps the green box near realtime.
+    nonisolated func process(sampleBuffer: CMSampleBuffer) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        frameCounter += 1
-        if frameCounter % processEveryNFrames != 0 { return }
-
-        var results: [VisionDetection] = []
-
-        if let request {
-            results.append(contentsOf: runVisionRequest(request, on: pixelBuffer))
+        // --- Fast path: motion tracking every frame (does not wait for YOLO) ---
+        let motionUpdate: [VisionDetection]? = stateQueue.sync {
+            let motion = runMotionHeuristic(current: pixelBuffer)
+            guard !motion.isEmpty else { return nil }
+            let now = Date()
+            guard now.timeIntervalSince(lastMotionPublish) > 0.03 else { return nil }
+            lastMotionPublish = now
+            return motion
         }
 
-        if results.isEmpty {
-            results.append(contentsOf: runMotionHeuristic(current: pixelBuffer))
+        if let motionUpdate {
+            DispatchQueue.main.async { [weak self] in
+                self?.publish(motionUpdate, preferOverExistingYOLO: false)
+            }
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.clearIfStale()
+            }
         }
 
+        // --- Slow path: YOLO when free; drops frames instead of queueing lag ---
+        let shouldRunYOLO = stateQueue.sync { () -> Bool in
+            guard request != nil, !isYOLOBusy else { return false }
+            isYOLOBusy = true
+            return true
+        }
+
+        guard shouldRunYOLO else { return }
+
+        // AVFoundation reuses the camera buffer after this callback returns —
+        // copy it so YOLO can run asynchronously without stale memory.
+        guard let frameCopy = Self.copyPixelBuffer(pixelBuffer) else {
+            stateQueue.sync { isYOLOBusy = false }
+            return
+        }
+
+        inferenceQueue.async { [weak self] in
+            guard let self else { return }
+
+            defer {
+                self.stateQueue.sync { self.isYOLOBusy = false }
+            }
+
+            guard let request = self.request else { return }
+            let yolo = self.runVisionRequest(request, on: frameCopy)
+            guard !yolo.isEmpty else { return }
+
+            DispatchQueue.main.async {
+                self.publish(yolo, preferOverExistingYOLO: true)
+            }
+        }
+    }
+
+    private func publish(_ results: [VisionDetection], preferOverExistingYOLO: Bool) {
+        guard !results.isEmpty else { return }
+
+        // If we already show a YOLO box, don't let a weak motion box overwrite it
+        // unless this update is also YOLO.
+        if !preferOverExistingYOLO,
+           detections.contains(where: { $0.source == .vision }) ,
+           Date().timeIntervalSince(lastDetectionPublish) < 0.2 {
+            return
+        }
+
+        lastDetectionPublish = Date()
         detections = results
     }
 
+    private func clearIfStale() {
+        if !detections.isEmpty,
+           Date().timeIntervalSince(lastDetectionPublish) > maxDetectionAge {
+            detections = []
+        }
+    }
+
     private func loadModel() {
-        // Prefer Xcode-generated wrapper (compiled into the app from YOLOv8n.mlpackage).
         if let bundled = try? YOLOv8n(configuration: {
             let config = MLModelConfiguration()
-            config.computeUnits = .all
+            if #available(iOS 16.0, *) {
+                config.computeUnits = .cpuAndNeuralEngine
+            } else {
+                config.computeUnits = .all
+            }
             return config
         }()) {
             configure(with: bundled.model, displayName: "YOLOv8n Core ML")
@@ -81,14 +150,18 @@ final class DroneVisionDetector: ObservableObject {
                 let compiledURL = try MLModel.compileModel(at: packageURL)
                 configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML")
             } catch {
-                loadError = "Failed to compile YOLOv8n: \(error.localizedDescription)"
-                modelName = "Motion fallback (model compile failed)"
+                DispatchQueue.main.async {
+                    self.loadError = "Failed to compile YOLOv8n: \(error.localizedDescription)"
+                    self.modelName = "Motion fallback (model compile failed)"
+                }
             }
             return
         }
 
-        loadError = "YOLOv8n.mlpackage missing from app bundle"
-        modelName = "Motion + Aerial Heuristics (model not in bundle)"
+        DispatchQueue.main.async {
+            self.loadError = "YOLOv8n.mlpackage missing from app bundle"
+            self.modelName = "Motion + Aerial Heuristics (model not in bundle)"
+        }
     }
 
     private func configure(with model: MLModel, displayName: String) {
@@ -99,13 +172,17 @@ final class DroneVisionDetector: ObservableObject {
 
             self.visionModel = visionModel
             self.request = request
-            isModelLoaded = true
-            loadError = nil
-            modelName = displayName
+            DispatchQueue.main.async {
+                self.isModelLoaded = true
+                self.loadError = nil
+                self.modelName = displayName
+            }
         } catch {
-            loadError = error.localizedDescription
-            modelName = "Motion fallback (model load failed)"
-            isModelLoaded = false
+            DispatchQueue.main.async {
+                self.loadError = error.localizedDescription
+                self.modelName = "Motion fallback (model load failed)"
+                self.isModelLoaded = false
+            }
             visionModel = nil
             request = nil
         }
@@ -114,13 +191,19 @@ final class DroneVisionDetector: ObservableObject {
     private func configure(withModelAt url: URL, displayName: String) {
         do {
             let configuration = MLModelConfiguration()
-            configuration.computeUnits = .all
+            if #available(iOS 16.0, *) {
+                configuration.computeUnits = .cpuAndNeuralEngine
+            } else {
+                configuration.computeUnits = .all
+            }
             let model = try MLModel(contentsOf: url, configuration: configuration)
             configure(with: model, displayName: displayName)
         } catch {
-            loadError = error.localizedDescription
-            modelName = "Motion fallback (model load failed)"
-            isModelLoaded = false
+            DispatchQueue.main.async {
+                self.loadError = error.localizedDescription
+                self.modelName = "Motion fallback (model load failed)"
+                self.isModelLoaded = false
+            }
             visionModel = nil
             request = nil
         }
@@ -128,7 +211,8 @@ final class DroneVisionDetector: ObservableObject {
 
     private func runVisionRequest(_ request: VNCoreMLRequest, on pixelBuffer: CVPixelBuffer) -> [VisionDetection] {
         do {
-            try sequenceHandler.perform([request], on: pixelBuffer, orientation: .up)
+            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
+            try handler.perform([request])
             guard let results = request.results, !results.isEmpty else { return [] }
 
             if let recognized = results as? [VNRecognizedObjectObservation] {
@@ -156,7 +240,6 @@ final class DroneVisionDetector: ObservableObject {
         }
     }
 
-    /// Fallback for YOLO Core ML exports that return raw confidence/coordinates tensors.
     private func mapFeatureValueObservations(_ results: [Any]) -> [VisionDetection] {
         var confidenceArray: MLMultiArray?
         var coordinatesArray: MLMultiArray?
@@ -210,8 +293,6 @@ final class DroneVisionDetector: ObservableObject {
             let width = coordinates[[boxIndex, 2] as [NSNumber]].doubleValue
             let height = coordinates[[boxIndex, 3] as [NSNumber]].doubleValue
 
-            // YOLO Core ML coords are normalized center-x/y/width/height.
-            // Vision overlay space expects bottom-left origin.
             let rect = CGRect(
                 x: cx - width / 2,
                 y: 1 - (cy + height / 2),
@@ -249,78 +330,128 @@ final class DroneVisionDetector: ObservableObject {
         return name.capitalized
     }
 
+    /// Must be called on `stateQueue`.
     private func runMotionHeuristic(current: CVPixelBuffer) -> [VisionDetection] {
-        defer { previousFrame = current }
-
-        guard let previousFrame else { return [] }
-
         let width = CVPixelBufferGetWidth(current)
         let height = CVPixelBufferGetHeight(current)
-        guard width == CVPixelBufferGetWidth(previousFrame),
-              height == CVPixelBufferGetHeight(previousFrame) else { return [] }
+        let grid = motionGrid
 
         CVPixelBufferLockBaseAddress(current, .readOnly)
-        CVPixelBufferLockBaseAddress(previousFrame, .readOnly)
-        defer {
-            CVPixelBufferUnlockBaseAddress(current, .readOnly)
-            CVPixelBufferUnlockBaseAddress(previousFrame, .readOnly)
-        }
+        defer { CVPixelBufferUnlockBaseAddress(current, .readOnly) }
 
-        guard
-            let currentBase = CVPixelBufferGetBaseAddress(current),
-            let previousBase = CVPixelBufferGetBaseAddress(previousFrame)
-        else { return [] }
+        guard let base = CVPixelBufferGetBaseAddress(current) else { return [] }
 
         let bytesPerRow = CVPixelBufferGetBytesPerRow(current)
-        let grid = 24
         let cellWidth = max(width / grid, 1)
         let cellHeight = max(height / grid, 1)
-        var hotCells: [(x: Int, y: Int, score: Float)] = []
+        let step = 8
+        var currentGrid = [Float](repeating: 0, count: grid * grid)
 
         for gy in 0..<grid {
             for gx in 0..<grid {
-                var diff = 0
+                var sum = 0
                 var samples = 0
                 let startY = gy * cellHeight
                 let startX = gx * cellWidth
 
-                for y in stride(from: startY, to: min(startY + cellHeight, height), by: 4) {
-                    for x in stride(from: startX, to: min(startX + cellWidth, width), by: 4) {
+                for y in stride(from: startY, to: min(startY + cellHeight, height), by: step) {
+                    for x in stride(from: startX, to: min(startX + cellWidth, width), by: step) {
                         let offset = y * bytesPerRow + x * 4
-                        let currentPixel = currentBase.load(fromByteOffset: offset, as: UInt32.self)
-                        let previousPixel = previousBase.load(fromByteOffset: offset, as: UInt32.self)
-                        diff += abs(Int(currentPixel & 0xFF) - Int(previousPixel & 0xFF))
+                        let pixel = base.load(fromByteOffset: offset, as: UInt32.self)
+                        // Approximate luma from B channel-ish of BGRA packed value
+                        sum += Int(pixel & 0xFF)
                         samples += 1
                     }
                 }
+                currentGrid[gy * grid + gx] = Float(sum) / Float(max(samples, 1))
+            }
+        }
 
-                let score = Float(diff) / Float(max(samples, 1))
-                if score > 12 {
+        let previous = previousLumaGrid
+        previousLumaGrid = currentGrid
+        guard let previous, previous.count == currentGrid.count else { return [] }
+
+        var hotCells: [(x: Int, y: Int, score: Float)] = []
+        for gy in 0..<grid {
+            for gx in 0..<grid {
+                let idx = gy * grid + gx
+                let score = abs(currentGrid[idx] - previous[idx])
+                if score > 10 {
                     hotCells.append((gx, gy, score))
                 }
             }
         }
 
-        // Require a compact moving blob; ignore whole-frame camera shake.
-        guard hotCells.count >= 1, hotCells.count <= 40 else { return [] }
+        guard hotCells.count >= 1, hotCells.count <= 24 else { return [] }
 
         let avgX = hotCells.map(\.x).reduce(0, +) / hotCells.count
         let avgY = hotCells.map(\.y).reduce(0, +) / hotCells.count
         let avgScore = hotCells.map(\.score).reduce(0, +) / Float(hotCells.count)
-        let normalizedConfidence = min(0.75, max(0.35, avgScore / 40))
+        let normalizedConfidence = min(0.7, max(0.35, avgScore / 40))
 
-        let boxWidth = CGFloat(2) / CGFloat(grid)
-        let boxHeight = CGFloat(2) / CGFloat(grid)
+        let boxWidth = CGFloat(2.5) / CGFloat(grid)
+        let boxHeight = CGFloat(2.5) / CGFloat(grid)
         let originX = CGFloat(avgX) / CGFloat(grid) - boxWidth / 2
         let originY = 1 - (CGFloat(avgY) / CGFloat(grid)) - boxHeight / 2
 
         return [
             VisionDetection(
-                label: "Moving Aerial Object",
+                label: "Moving Object",
                 confidence: normalizedConfidence,
                 boundingBox: CGRect(x: originX, y: originY, width: boxWidth, height: boxHeight),
                 source: .motion
             )
         ]
+    }
+
+    private static func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(source)
+
+        var copy: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            pixelFormat,
+            [
+                kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+                kCVPixelBufferCGImageCompatibilityKey: true,
+                kCVPixelBufferCGBitmapContextCompatibilityKey: true
+            ] as CFDictionary,
+            &copy
+        )
+        guard status == kCVReturnSuccess, let destination = copy else { return nil }
+
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(destination, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+            CVPixelBufferUnlockBaseAddress(destination, [])
+        }
+
+        guard
+            let src = CVPixelBufferGetBaseAddress(source),
+            let dst = CVPixelBufferGetBaseAddress(destination)
+        else { return nil }
+
+        let srcBytesPerRow = CVPixelBufferGetBytesPerRow(source)
+        let dstBytesPerRow = CVPixelBufferGetBytesPerRow(destination)
+
+        if srcBytesPerRow == dstBytesPerRow {
+            memcpy(dst, src, srcBytesPerRow * height)
+        } else {
+            let rowBytes = min(srcBytesPerRow, dstBytesPerRow)
+            for row in 0..<height {
+                memcpy(
+                    dst.advanced(by: row * dstBytesPerRow),
+                    src.advanced(by: row * srcBytesPerRow),
+                    rowBytes
+                )
+            }
+        }
+
+        return destination
     }
 }

@@ -95,10 +95,10 @@ struct ContentView: View {
     }
 
     private func wireCameraPipeline() {
-        cameraManager.setFrameHandler { sampleBuffer in
-            Task { @MainActor in
-                visionDetector.process(sampleBuffer: sampleBuffer)
-            }
+        // Process on the camera/video queue — do NOT hop to MainActor first
+        // (that was causing 1–2s lag before the box appeared).
+        cameraManager.setFrameHandler { [weak visionDetector] sampleBuffer in
+            visionDetector?.process(sampleBuffer: sampleBuffer)
         }
     }
 

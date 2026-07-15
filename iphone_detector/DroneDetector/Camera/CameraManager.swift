@@ -76,7 +76,12 @@ final class CameraManager: NSObject, ObservableObject {
 
     private func configureSession() {
         session.beginConfiguration()
-        session.sessionPreset = .high
+        // 720p is enough for YOLO (640 input) and keeps latency low.
+        if session.canSetSessionPreset(.hd1280x720) {
+            session.sessionPreset = .hd1280x720
+        } else {
+            session.sessionPreset = .medium
+        }
 
         guard
             let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
@@ -92,11 +97,29 @@ final class CameraManager: NSObject, ObservableObject {
 
         session.addInput(input)
 
+        do {
+            try camera.lockForConfiguration()
+            if camera.isFocusModeSupported(.continuousAutoFocus) {
+                camera.focusMode = .continuousAutoFocus
+            }
+            if camera.isExposureModeSupported(.continuousAutoExposure) {
+                camera.exposureMode = .continuousAutoExposure
+            }
+            // Prefer low-latency stream over smoothness.
+            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 30)
+            camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 30)
+            camera.unlockForConfiguration()
+        } catch {
+            // Continue with defaults if lock fails.
+        }
+
         videoOutput.alwaysDiscardsLateVideoFrames = true
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
         ]
-        videoOutput.setSampleBufferDelegate(self, queue: sessionQueue)
+        // Dedicated queue so camera never waits on inference.
+        let videoQueue = DispatchQueue(label: "com.vozhyk.drone-detector.video-output", qos: .userInteractive)
+        videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
 
         guard session.canAddOutput(videoOutput) else {
             Task { @MainActor in
@@ -116,8 +139,9 @@ final class CameraManager: NSObject, ObservableObject {
             } else if connection.isVideoOrientationSupported {
                 connection.videoOrientation = .portrait
             }
+            // Stabilization adds delay — disable for tracking.
             if connection.isVideoStabilizationSupported {
-                connection.preferredVideoStabilizationMode = .auto
+                connection.preferredVideoStabilizationMode = .off
             }
         }
 
