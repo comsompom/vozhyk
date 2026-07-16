@@ -5,8 +5,10 @@ struct ContentView: View {
     @StateObject private var visionDetector = DroneVisionDetector()
     @StateObject private var radioScanner = RadioScanner()
     @StateObject private var locationManager = LocationPermissionManager()
+    @StateObject private var detectionSettings = DetectionSettingsStore()
 
     @State private var isScanning = false
+    @State private var showSettings = false
 
     private var scannerState: ScannerState {
         ScannerState(
@@ -27,34 +29,45 @@ struct ContentView: View {
                 CameraPreviewView(session: cameraManager.session)
                     .ignoresSafeArea()
 
-                DetectionOverlayView(detections: visionDetector.detections)
+                DetectionOverlayView(
+                    detections: visionDetector.detections,
+                    settings: detectionSettings
+                )
                     .ignoresSafeArea()
             } else {
                 permissionView
             }
 
+            StatusHUDView(
+                threatLevel: scannerState.threatLevel,
+                cameraActive: cameraManager.isRunning,
+                radioScanning: radioScanner.isScanning,
+                cameraDetections: visionDetector.detections,
+                radioSignals: radioScanner.signals,
+                modelName: visionDetector.modelName,
+                modelLoaded: visionDetector.isModelLoaded,
+                modelLoadError: visionDetector.loadError,
+                radioStatus: radioScanner.statusMessage
+            )
+
             VStack {
-                StatusHUDView(
-                    threatLevel: scannerState.threatLevel,
-                    cameraActive: cameraManager.isRunning,
-                    radioScanning: radioScanner.isScanning,
-                    cameraDetections: visionDetector.detections,
-                    radioSignals: radioScanner.signals,
-                    modelName: visionDetector.modelName,
-                    modelLoaded: visionDetector.isModelLoaded,
-                    modelLoadError: visionDetector.loadError,
-                    radioStatus: radioScanner.statusMessage
-                )
                 Spacer()
                 controlBar
             }
         }
         .onAppear {
             wireCameraPipeline()
+            visionDetector.updateEnabledTypes(detectionSettings.enabledTypes)
             startScanning()
         }
         .onDisappear {
             stopScanning()
+        }
+        .onChange(of: detectionSettings.enabledByType) { _ in
+            visionDetector.updateEnabledTypes(detectionSettings.enabledTypes)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(settings: detectionSettings)
         }
     }
 
@@ -81,6 +94,15 @@ struct ContentView: View {
 
     private var controlBar: some View {
         HStack(spacing: 16) {
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+
             Button {
                 isScanning ? stopScanning() : startScanning()
             } label: {

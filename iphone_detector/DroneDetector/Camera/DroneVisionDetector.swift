@@ -39,12 +39,17 @@ final class DroneVisionDetector: ObservableObject {
         "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
     ]
 
-    private let aerialLabels: Set<String> = [
-        "airplane", "aircraft", "bird", "kite", "drone", "uav", "quadcopter", "flying"
-    ]
+    private var enabledTypes: Set<DetectableObjectType> = Set(DetectableObjectType.allCases)
 
     init() {
         loadModel()
+    }
+
+    @MainActor
+    func updateEnabledTypes(_ types: Set<DetectableObjectType>) {
+        stateQueue.sync {
+            enabledTypes = types
+        }
     }
 
     /// Called from the camera video queue. Keeps the green box near realtime.
@@ -229,13 +234,16 @@ final class DroneVisionDetector: ObservableObject {
         observations.compactMap { observation in
             guard let top = observation.labels.first else { return nil }
             let name = top.identifier.lowercased()
-            guard isAerialLabel(name), top.confidence >= confidenceThreshold else { return nil }
+            guard top.confidence >= confidenceThreshold,
+                  let objectType = mapLabelToObjectType(name),
+                  enabledTypes.contains(objectType) else { return nil }
 
             return VisionDetection(
-                label: displayLabel(for: name),
+                label: objectType.title,
                 confidence: top.confidence,
                 boundingBox: observation.boundingBox,
-                source: .vision
+                source: .vision,
+                objectType: objectType
             )
         }
     }
@@ -282,11 +290,12 @@ final class DroneVisionDetector: ObservableObject {
 
             guard bestScore >= confidenceThreshold else { continue }
 
-            let label = Self.cocoClassNames.indices.contains(bestClass)
+            let rawLabel = Self.cocoClassNames.indices.contains(bestClass)
                 ? Self.cocoClassNames[bestClass]
                 : "object-\(bestClass)"
 
-            guard isAerialLabel(label) else { continue }
+            guard let objectType = mapLabelToObjectType(rawLabel),
+                  enabledTypes.contains(objectType) else { continue }
 
             let cx = coordinates[[boxIndex, 0] as [NSNumber]].doubleValue
             let cy = coordinates[[boxIndex, 1] as [NSNumber]].doubleValue
@@ -302,10 +311,11 @@ final class DroneVisionDetector: ObservableObject {
 
             detections.append(
                 VisionDetection(
-                    label: displayLabel(for: label),
+                    label: objectType.title,
                     confidence: bestScore,
                     boundingBox: rect,
-                    source: .vision
+                    source: .vision,
+                    objectType: objectType
                 )
             )
         }
@@ -313,21 +323,33 @@ final class DroneVisionDetector: ObservableObject {
         return detections
     }
 
-    private func isAerialLabel(_ name: String) -> Bool {
-        aerialLabels.contains(where: { name.contains($0) })
-    }
-
-    private func displayLabel(for name: String) -> String {
-        if name.contains("airplane") || name.contains("aircraft") {
-            return "Possible Drone"
+    private func mapLabelToObjectType(_ label: String) -> DetectableObjectType? {
+        let value = label.lowercased()
+        if value.contains("car") || value.contains("auto") {
+            return .auto
         }
-        if name.contains("bird") {
-            return "Bird / UAV"
+        if value.contains("airplane") || value.contains("aircraft") || value.contains("plane") {
+            return .plane
         }
-        if name.contains("kite") {
-            return "Aerial Object"
+        if value.contains("drone") || value.contains("uav") || value.contains("quadcopter") || value.contains("kite") {
+            return .drone
         }
-        return name.capitalized
+        if value.contains("bird") {
+            return .bird
+        }
+        if value.contains("person") || value.contains("human") {
+            return .human
+        }
+        if value.contains("bus") {
+            return .bus
+        }
+        if value.contains("truck") {
+            return .truck
+        }
+        if value.contains("motorcycle") {
+            return .motorcycle
+        }
+        return nil
     }
 
     /// Must be called on `stateQueue`.
@@ -394,12 +416,14 @@ final class DroneVisionDetector: ObservableObject {
         let originX = CGFloat(avgX) / CGFloat(grid) - boxWidth / 2
         let originY = 1 - (CGFloat(avgY) / CGFloat(grid)) - boxHeight / 2
 
+        guard enabledTypes.contains(.drone) else { return [] }
         return [
             VisionDetection(
-                label: "Moving Object",
+                label: DetectableObjectType.drone.title,
                 confidence: normalizedConfidence,
                 boundingBox: CGRect(x: originX, y: originY, width: boxWidth, height: boxHeight),
-                source: .motion
+                source: .motion,
+                objectType: .drone
             )
         ]
     }

@@ -2,14 +2,16 @@ import SwiftUI
 
 struct DetectionOverlayView: View {
     let detections: [VisionDetection]
+    @ObservedObject var settings: DetectionSettingsStore
 
     var body: some View {
         GeometryReader { geometry in
             ForEach(detections) { detection in
                 let rect = convert(detection.boundingBox, in: geometry.size)
                 ZStack(alignment: .topLeading) {
+                    let borderColor = settings.borderColor(for: detection.objectType)
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.green, lineWidth: 2)
+                        .stroke(borderColor, lineWidth: 2)
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
 
@@ -17,7 +19,7 @@ struct DetectionOverlayView: View {
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(Color.green.opacity(0.85))
+                        .background(borderColor.opacity(0.85))
                         .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .position(x: rect.midX, y: max(12, rect.minY - 10))

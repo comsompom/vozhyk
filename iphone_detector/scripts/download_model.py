@@ -73,15 +73,6 @@ def main() -> None:
             "Run: pip install -r scripts/requirements.txt"
         ) from exc
 
-    try:
-        import coremltools  # noqa: F401
-    except ImportError as exc:
-        raise SystemExit(
-            "coremltools is not installed.\n"
-            "Run: pip install -r scripts/requirements.txt"
-        ) from exc
-
-    WORK_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / "YOLOv8n.mlpackage"
 

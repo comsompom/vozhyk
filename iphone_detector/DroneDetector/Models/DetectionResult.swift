@@ -7,9 +7,14 @@ struct VisionDetection: Identifiable, Equatable {
     let confidence: Float
     let boundingBox: CGRect
     let source: DetectionSource
+    let objectType: DetectableObjectType
+
+    static func == (lhs: VisionDetection, rhs: VisionDetection) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
-enum DetectionSource: String {
+enum DetectionSource: String, Equatable {
     case vision = "Camera AI"
     case motion = "Motion"
 }
