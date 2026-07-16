@@ -7,9 +7,14 @@ The project now has a custom Core ML object detection model trained to detect th
 The app build uses:
 
 - Model: `iphone_detector/DroneDetector/Models/DroneDetector.mlpackage`
+- Preserved COCO fallback model: `iphone_detector/DroneDetector/Models/YOLOv8n.mlpackage`
 - Dataset: `iphone_detector/datasets/drone_video_draft/data.yaml`
 - Training run: `iphone_detector/runs/drone_detector-2`
 - Source videos: `video_sources/*.mp4`
+
+The dataset, training run, export cache, and original uploaded video sources were removed after training to recover local disk space. The trained Core ML app model was kept.
+
+Important: the custom `DroneDetector.mlpackage` was trained only from `plane_drone` draft labels. It includes metadata slots for `auto`, `plane`, `drone`, `bird`, `human`, `bus`, `truck`, and `motorcycle`, but those classes were not meaningfully trained in the first pass. To preserve the previously strong detections for `auto`, `truck`, `plane`, `human`, and the other retained COCO classes, the app intentionally runs the bundled `YOLOv8n.mlpackage` alongside the custom model.
 
 ## Implemented App Changes
 
@@ -25,6 +30,11 @@ The app build uses:
   - `fixed wing drone`
 - Added a fallback class-name mapping for custom 9-class models. This protects the app if Core ML metadata is missing.
 - Updated the training export script so future Core ML exports include the dataset class mapping in model metadata.
+- Updated the app detector to run two Core ML pipelines:
+  - `DroneDetector.mlpackage` for the new `Plane Drone` class.
+  - `YOLOv8n.mlpackage` for the previously good COCO classes such as `auto`, `truck`, `plane`, and `human`.
+- Added both mlpackages to the Xcode target so they are available in the app bundle.
+- Added overlap deduplication so a custom `Plane Drone` detection wins over a generic overlapping `Plane` detection.
 
 ## Dataset Creation
 

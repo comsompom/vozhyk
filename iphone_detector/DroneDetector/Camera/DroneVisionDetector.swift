@@ -12,8 +12,17 @@ final class DroneVisionDetector: ObservableObject {
     /// The overlay uses this to match `AVCaptureVideoPreviewLayer` aspect-fill cropping.
     @Published private(set) var frameAspectRatio: CGFloat = 9.0 / 16.0
 
-    private var visionModel: VNCoreMLModel?
-    private var request: VNCoreMLRequest?
+    private struct VisionModelPipeline {
+        let displayName: String
+        let request: VNCoreMLRequest
+        let classNames: [String]
+    }
+
+    private struct PipelineLoadError: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    private var modelPipelines: [VisionModelPipeline] = []
 
     private let inferenceQueue = DispatchQueue(
         label: "com.vozhyk.drone-detector.inference",
@@ -56,9 +65,6 @@ final class DroneVisionDetector: ObservableObject {
     private static let customClassNames = DetectableObjectType.allCases.map(\.rawValue)
 
     private var enabledTypes: Set<DetectableObjectType> = Set(DetectableObjectType.allCases)
-    /// Core ML exports place the dataset label mapping in user-defined metadata.
-    /// This stays COCO only for the bundled fallback model.
-    private var classNames = DroneVisionDetector.cocoClassNames
 
     init() {
         loadModel()
@@ -83,7 +89,7 @@ final class DroneVisionDetector: ObservableObject {
 
         // --- Slow path: YOLO when free; drops frames instead of queueing lag ---
         let shouldRunYOLO = stateQueue.sync { () -> Bool in
-            guard request != nil, !isYOLOBusy else { return false }
+            guard !modelPipelines.isEmpty, !isYOLOBusy else { return false }
             isYOLOBusy = true
             return true
         }
@@ -104,8 +110,12 @@ final class DroneVisionDetector: ObservableObject {
                 self.stateQueue.sync { self.isYOLOBusy = false }
             }
 
-            guard let request = self.request else { return }
-            let yolo = self.runVisionRequest(request, on: frameCopy)
+            let pipelines = self.stateQueue.sync { self.modelPipelines }
+            let yolo = Self.deduplicatedDetections(
+                pipelines.flatMap { pipeline in
+                    self.runVisionRequest(pipeline.request, on: frameCopy, classNames: pipeline.classNames)
+                }
+            )
             guard !yolo.isEmpty else { return }
 
             let confirmed = self.stateQueue.sync {
@@ -135,58 +145,78 @@ final class DroneVisionDetector: ObservableObject {
     }
 
     private func loadModel() {
-        // A custom drone-aware model takes precedence over the bundled COCO model.
-        // Xcode compiles an mlpackage to this resource name at build time.
-        if let customURL = Bundle.main.url(forResource: "DroneDetector", withExtension: "mlmodelc") {
-            configure(withModelAt: customURL, displayName: "Custom DroneDetector Core ML")
-            return
+        var loadedPipelines: [VisionModelPipeline] = []
+        var loadErrors: [String] = []
+
+        switch makePipeline(
+            resourceName: "DroneDetector",
+            displayName: "Plane Drone Core ML",
+            fallbackClassNames: Self.customClassNames
+        ) {
+        case .success(let pipeline):
+            loadedPipelines.append(pipeline)
+        case .failure(let error):
+            loadErrors.append(error.description)
         }
 
-        if let packageURL = Bundle.main.url(forResource: "DroneDetector", withExtension: "mlpackage") {
-            do {
-                let compiledURL = try MLModel.compileModel(at: packageURL)
-                configure(withModelAt: compiledURL, displayName: "YOLO-World Core ML")
-            } catch {
-                DispatchQueue.main.async {
-                    self.loadError = "Failed to compile DroneDetector model: \(error.localizedDescription)"
-                    self.modelName = "Drone model failed to load"
-                }
-            }
-            return
+        switch makePipeline(
+            resourceName: "YOLOv8n",
+            displayName: "COCO YOLOv8n",
+            fallbackClassNames: Self.cocoClassNames
+        ) {
+        case .success(let pipeline):
+            loadedPipelines.append(pipeline)
+        case .failure(let error):
+            loadErrors.append(error.description)
+        }
+
+        stateQueue.sync {
+            self.modelPipelines = loadedPipelines
         }
 
         DispatchQueue.main.async {
-            self.loadError = "DroneDetector.mlpackage missing from app bundle"
-            self.modelName = "Drone model missing"
+            self.isModelLoaded = !loadedPipelines.isEmpty
+            self.modelName = loadedPipelines.isEmpty
+                ? "Drone models missing"
+                : loadedPipelines.map(\.displayName).joined(separator: " + ")
+            self.loadError = loadErrors.isEmpty ? nil : loadErrors.joined(separator: "\n")
         }
     }
 
-    private func configure(with model: MLModel, displayName: String) {
+    private func makePipeline(
+        resourceName: String,
+        displayName: String,
+        fallbackClassNames: [String]
+    ) -> Result<VisionModelPipeline, PipelineLoadError> {
+        if let compiledURL = Bundle.main.url(forResource: resourceName, withExtension: "mlmodelc") {
+            return makePipeline(
+                withModelAt: compiledURL,
+                displayName: displayName,
+                fallbackClassNames: fallbackClassNames
+            )
+        }
+
+        guard let packageURL = Bundle.main.url(forResource: resourceName, withExtension: "mlpackage") else {
+            return .failure(PipelineLoadError(description: "\(resourceName).mlpackage missing from app bundle"))
+        }
+
         do {
-            let visionModel = try VNCoreMLModel(for: model)
-            let request = VNCoreMLRequest(model: visionModel)
-            request.imageCropAndScaleOption = .scaleFill
-
-            self.visionModel = visionModel
-            self.request = request
-            self.classNames = Self.classNames(from: model) ?? Self.cocoClassNames
-            DispatchQueue.main.async {
-                self.isModelLoaded = true
-                self.loadError = nil
-                self.modelName = displayName
-            }
+            let compiledURL = try MLModel.compileModel(at: packageURL)
+            return makePipeline(
+                withModelAt: compiledURL,
+                displayName: displayName,
+                fallbackClassNames: fallbackClassNames
+            )
         } catch {
-            DispatchQueue.main.async {
-                self.loadError = error.localizedDescription
-                self.modelName = "Motion fallback (model load failed)"
-                self.isModelLoaded = false
-            }
-            visionModel = nil
-            request = nil
+            return .failure(PipelineLoadError(description: "Failed to compile \(resourceName): \(error.localizedDescription)"))
         }
     }
 
-    private func configure(withModelAt url: URL, displayName: String) {
+    private func makePipeline(
+        withModelAt url: URL,
+        displayName: String,
+        fallbackClassNames: [String]
+    ) -> Result<VisionModelPipeline, PipelineLoadError> {
         do {
             let configuration = MLModelConfiguration()
             if #available(iOS 16.0, *) {
@@ -195,19 +225,25 @@ final class DroneVisionDetector: ObservableObject {
                 configuration.computeUnits = .all
             }
             let model = try MLModel(contentsOf: url, configuration: configuration)
-            configure(with: model, displayName: displayName)
+            let visionModel = try VNCoreMLModel(for: model)
+            let request = VNCoreMLRequest(model: visionModel)
+            request.imageCropAndScaleOption = .scaleFill
+
+            return .success(VisionModelPipeline(
+                displayName: displayName,
+                request: request,
+                classNames: Self.classNames(from: model) ?? fallbackClassNames
+            ))
         } catch {
-            DispatchQueue.main.async {
-                self.loadError = error.localizedDescription
-                self.modelName = "Motion fallback (model load failed)"
-                self.isModelLoaded = false
-            }
-            visionModel = nil
-            request = nil
+            return .failure(PipelineLoadError(description: "Failed to load \(displayName): \(error.localizedDescription)"))
         }
     }
 
-    private func runVisionRequest(_ request: VNCoreMLRequest, on pixelBuffer: CVPixelBuffer) -> [VisionDetection] {
+    private func runVisionRequest(
+        _ request: VNCoreMLRequest,
+        on pixelBuffer: CVPixelBuffer,
+        classNames: [String]
+    ) -> [VisionDetection] {
         do {
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
             try handler.perform([request])
@@ -217,7 +253,7 @@ final class DroneVisionDetector: ObservableObject {
                 return mapRecognizedObjects(recognized)
             }
 
-            return mapFeatureValueObservations(results)
+            return mapFeatureValueObservations(results, classNames: classNames)
         } catch {
             return []
         }
@@ -242,8 +278,8 @@ final class DroneVisionDetector: ObservableObject {
         }
     }
 
-    private func mapFeatureValueObservations(_ results: [Any]) -> [VisionDetection] {
-        let state = stateQueue.sync { (enabledTypes, classNames) }
+    private func mapFeatureValueObservations(_ results: [Any], classNames: [String]) -> [VisionDetection] {
+        let activeTypes: Set<DetectableObjectType> = stateQueue.sync { self.enabledTypes }
         var confidenceArray: MLMultiArray?
         var coordinatesArray: MLMultiArray?
 
@@ -285,13 +321,13 @@ final class DroneVisionDetector: ObservableObject {
 
             guard bestScore >= confidenceThreshold else { continue }
 
-            let activeClassNames = Self.classNames(state.1, matching: classCount)
+            let activeClassNames = Self.classNames(classNames, matching: classCount)
             let rawLabel = activeClassNames.indices.contains(bestClass)
                 ? activeClassNames[bestClass]
                 : "object-\(bestClass)"
 
             guard let objectType = mapLabelToObjectType(rawLabel),
-                  state.0.contains(objectType) else { continue }
+                  activeTypes.contains(objectType) else { continue }
 
             let cx = coordinates[[boxIndex, 0] as [NSNumber]].doubleValue
             let cy = coordinates[[boxIndex, 1] as [NSNumber]].doubleValue
@@ -390,6 +426,35 @@ final class DroneVisionDetector: ObservableObject {
         let intersectionArea = intersection.width * intersection.height
         let unionArea = lhs.width * lhs.height + rhs.width * rhs.height - intersectionArea
         return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+
+    private static func deduplicatedDetections(_ detections: [VisionDetection]) -> [VisionDetection] {
+        let sorted = detections.sorted { lhs, rhs in
+            let lhsPriority = detectionPriority(lhs)
+            let rhsPriority = detectionPriority(rhs)
+            if lhsPriority != rhsPriority {
+                return lhsPriority > rhsPriority
+            }
+            return lhs.confidence > rhs.confidence
+        }
+
+        var kept: [VisionDetection] = []
+        for detection in sorted where !kept.contains(where: {
+            iou($0.boundingBox, detection.boundingBox) > 0.45
+        }) {
+            kept.append(detection)
+        }
+        return kept
+    }
+
+    private static func detectionPriority(_ detection: VisionDetection) -> Int {
+        switch detection.objectType {
+        case .planeDrone: return 100
+        case .drone: return 90
+        case .plane: return 80
+        case .bird: return 70
+        case .auto, .bus, .truck, .motorcycle, .human: return 60
+        }
     }
 
     private static func classNames(from model: MLModel) -> [String]? {
