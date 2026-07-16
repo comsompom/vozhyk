@@ -53,6 +53,8 @@ final class DroneVisionDetector: ObservableObject {
         "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
     ]
 
+    private static let customClassNames = DetectableObjectType.allCases.map(\.rawValue)
+
     private var enabledTypes: Set<DetectableObjectType> = Set(DetectableObjectType.allCases)
     /// Core ML exports place the dataset label mapping in user-defined metadata.
     /// This stays COCO only for the bundled fallback model.
@@ -283,8 +285,9 @@ final class DroneVisionDetector: ObservableObject {
 
             guard bestScore >= confidenceThreshold else { continue }
 
-            let rawLabel = state.1.indices.contains(bestClass)
-                ? state.1[bestClass]
+            let activeClassNames = Self.classNames(state.1, matching: classCount)
+            let rawLabel = activeClassNames.indices.contains(bestClass)
+                ? activeClassNames[bestClass]
                 : "object-\(bestClass)"
 
             guard let objectType = mapLabelToObjectType(rawLabel),
@@ -318,6 +321,12 @@ final class DroneVisionDetector: ObservableObject {
 
     private func mapLabelToObjectType(_ label: String) -> DetectableObjectType? {
         let value = label.lowercased()
+        if value.contains("plane_drone") ||
+            value.contains("plane drone") ||
+            value.contains("fixed-wing drone") ||
+            value.contains("fixed wing drone") {
+            return .planeDrone
+        }
         if value.contains("car") || value.contains("auto") {
             return .auto
         }
@@ -400,6 +409,16 @@ final class DroneVisionDetector: ObservableObject {
             return String(rawClasses[valueRange])
         }
         return names.isEmpty ? nil : names
+    }
+
+    private static func classNames(_ modelClassNames: [String], matching classCount: Int) -> [String] {
+        if modelClassNames.count == classCount {
+            return modelClassNames
+        }
+        if customClassNames.count == classCount {
+            return customClassNames
+        }
+        return modelClassNames
     }
 
     /// Must be called on `stateQueue`.

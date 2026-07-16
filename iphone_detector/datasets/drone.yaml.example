@@ -1,0 +1,13 @@
+# Copy to drone.yaml and replace the paths with your labeled dataset locations.
+# Keep clips from the same flight in one split only; adjacent video frames must
+# never be distributed across train/val/test.
+path: /absolute/path/to/drone-dataset
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: drone
+  1: bird
+  2: aircraft
+  3: kite

@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import tempfile
 from pathlib import Path
 
+import coremltools as ct
+import yaml
 from ultralytics import YOLO
 
 
@@ -57,12 +60,36 @@ def main() -> None:
     if not exported.is_dir():
         raise SystemExit(f"Core ML export was not found: {exported}")
 
+    write_class_metadata(exported, dataset_names(args.data))
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     destination = OUTPUT_DIR / "DroneDetector.mlpackage"
     if destination.exists():
         shutil.rmtree(destination)
     shutil.move(str(exported), destination)
     print(f"Saved custom drone model to: {destination}")
+
+
+def dataset_names(data_yaml: Path) -> list[str]:
+    with data_yaml.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
+
+    names = data.get("names")
+    if isinstance(names, dict):
+        return [str(names[index]) for index in sorted(names)]
+    if isinstance(names, list):
+        return [str(name) for name in names]
+    raise SystemExit(f"Dataset names missing or invalid in: {data_yaml}")
+
+
+def write_class_metadata(model_path: Path, names: list[str]) -> None:
+    model = ct.models.MLModel(str(model_path), skip_model_load=True)
+    model.user_defined_metadata["classes"] = str({index: name for index, name in enumerate(names)})
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir) / model_path.name
+        model.save(str(temp_path))
+        shutil.rmtree(model_path)
+        shutil.move(str(temp_path), model_path)
 
 
 if __name__ == "__main__":
