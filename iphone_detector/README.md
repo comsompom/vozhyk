@@ -1,3 +1,16 @@
+## Built for
+
+OpenAI Build Week 2026
+
+## Powered by
+
+- OpenAI Codex
+- GPT-5
+- SwiftUI
+- Core ML
+- Vision Framework
+- YOLOv8
+
 # DroneDetector — iOS App
 
 iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visual drone detection and the phone's Bluetooth/Wi-Fi radios to spot drone-like RF signatures.
