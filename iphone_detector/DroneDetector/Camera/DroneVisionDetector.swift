@@ -140,40 +140,22 @@ final class DroneVisionDetector: ObservableObject {
             return
         }
 
-        if let bundled = try? YOLOv8n(configuration: {
-            let config = MLModelConfiguration()
-            if #available(iOS 16.0, *) {
-                config.computeUnits = .cpuAndNeuralEngine
-            } else {
-                config.computeUnits = .all
-            }
-            return config
-        }()) {
-            configure(with: bundled.model, displayName: "YOLOv8n Core ML (COCO; custom drone model needed)")
-            return
-        }
-
-        if let compiledURL = Bundle.main.url(forResource: "YOLOv8n", withExtension: "mlmodelc") {
-            configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML (COCO; custom drone model needed)")
-            return
-        }
-
-        if let packageURL = Bundle.main.url(forResource: "YOLOv8n", withExtension: "mlpackage") {
+        if let packageURL = Bundle.main.url(forResource: "DroneDetector", withExtension: "mlpackage") {
             do {
                 let compiledURL = try MLModel.compileModel(at: packageURL)
-                configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML (COCO; custom drone model needed)")
+                configure(withModelAt: compiledURL, displayName: "YOLO-World Core ML")
             } catch {
                 DispatchQueue.main.async {
-                    self.loadError = "Failed to compile YOLOv8n: \(error.localizedDescription)"
-                    self.modelName = "Motion fallback (model compile failed)"
+                    self.loadError = "Failed to compile DroneDetector model: \(error.localizedDescription)"
+                    self.modelName = "Drone model failed to load"
                 }
             }
             return
         }
 
         DispatchQueue.main.async {
-            self.loadError = "YOLOv8n.mlpackage missing from app bundle"
-            self.modelName = "Motion + Aerial Heuristics (model not in bundle)"
+            self.loadError = "DroneDetector.mlpackage missing from app bundle"
+            self.modelName = "Drone model missing"
         }
     }
 

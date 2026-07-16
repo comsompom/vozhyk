@@ -9,7 +9,9 @@ OpenAI Build Week 2026
 - SwiftUI
 - Core ML
 - Vision Framework
-- YOLOv8
+- YOLO-World
+
+feedback id: 019f6a59-5a57-74a2-98dd-8c77f5f37a1a
 
 # DroneDetector — iOS App
 
@@ -18,7 +20,7 @@ iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visua
 ## Features
 
 - **Live camera feed** with bounding-box overlays
-- **AI detection** via Core ML YOLOv8n (optional) + motion heuristics fallback
+- **AI detection** via Core ML YOLO-World, restricted to the app's object list
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar devices
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
@@ -42,7 +44,7 @@ open iphone_detector/DroneDetector.xcodeproj
 
 On first launch, allow **Camera**, **Bluetooth**, and **Location** (location is required by iOS for Wi-Fi SSID access).
 
-## Replace the COCO model with a drone-aware model
+## Drone-aware model
 
 The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model.
 
@@ -56,7 +58,7 @@ pip install -r scripts/requirements.txt
 python scripts/download_model.py
 ```
 
-Then in Xcode: if the model is not already listed under `DroneDetector/Models`, drag `DroneDetector/Models/YOLOv8n.mlpackage` into the project and ensure **Target Membership → DroneDetector** is checked. After a successful Run, the HUD should show **AI Model Ready** / `YOLOv8n Core ML`.
+The project uses `DroneDetector/Models/DroneDetector.mlpackage`, a YOLO-World model configured only for: Auto (car), Plane, Drone, Bird, Human, Bus, Truck, and Motorcycle. After a successful Run, the HUD should show **AI Model Ready** / `YOLO-World Core ML`.
 
 ### Branding
 
@@ -64,7 +66,7 @@ Then in Xcode: if the model is not already listed under `DroneDetector/Models`, 
 - **Launch / splash:** `app_start.png` → `LaunchScreen.storyboard` + in-app `SplashView` (~1.2s)
 - **Home screen name:** **Vozhyk**
 
-The bundled YOLOv8n is trained on COCO and has **no drone class**. It can be used to validate the camera pipeline, but it must not be used as a drone detector. The app no longer maps COCO `kite` to `Drone`, and it requires three spatially consistent model detections before it displays an alert.
+YOLO-World supports a real `drone` prompt without treating kites as drones. The model is intentionally restricted to the app's existing object list, and the app requires three spatially consistent model detections before it displays an alert.
 
 To make a real detector, collect and label images with these classes: `drone`, `bird`, `aircraft`, and `kite`. Include clouds, branches, glare, insects, and moving-camera scenes as unlabelled hard negatives. Keep each video/flight recording entirely within one of train, validation, or test splits.
 

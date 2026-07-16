@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Download YOLOv8n and export to Core ML for DroneDetector.
+Download a prompt-specialized YOLO-World model and export it to Core ML.
 
 Use a dedicated venv (recommended) so global NumPy 2.x does not break the export:
 
@@ -43,21 +43,21 @@ def check_numpy() -> None:
             "  python3.11 -m venv .venv\n"
             "  source .venv/bin/activate\n"
             "  pip install -r scripts/requirements.txt\n"
-            "  python scripts/download_model.py\n"
+        "  python scripts/download_model.py\n"
         )
 
 
 def find_exported_package(search_roots: list[Path]) -> Path | None:
     candidates = [
-        "yolov8n.mlpackage",
-        "YOLOv8n.mlpackage",
+        "drone_detector.mlpackage",
+        "DroneDetector.mlpackage",
     ]
     for root in search_roots:
         for name in candidates:
             path = root / name
             if path.exists():
                 return path
-        for path in root.glob("**/yolov8n.mlpackage"):
+        for path in root.glob("**/drone_detector.mlpackage"):
             return path
     return None
 
@@ -66,7 +66,7 @@ def main() -> None:
     check_numpy()
 
     try:
-        from ultralytics import YOLO
+        from ultralytics import YOLOWorld
     except ImportError as exc:
         raise SystemExit(
             "ultralytics is not installed.\n"
@@ -74,14 +74,23 @@ def main() -> None:
         ) from exc
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / "YOLOv8n.mlpackage"
+    WORK_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = OUTPUT_DIR / "DroneDetector.mlpackage"
 
     # Export into a stable work dir, not the caller's cwd / Desktop
     os.chdir(WORK_DIR)
     print(f"Working directory: {WORK_DIR}")
-    print("Downloading YOLOv8n and exporting to Core ML...")
+    print("Downloading YOLOv8s-World and specializing it for the app's classes...")
 
-    model = YOLO("yolov8n.pt")
+    # YOLO-World supports open-vocabulary detection. Restricting the vocabulary
+    # prevents the app from reporting the full COCO object list while allowing a
+    # real `drone` prompt without pretending that kites are drones.
+    model = YOLOWorld("yolov8s-world.pt")
+    model.set_classes([
+        "car", "airplane", "drone", "bird", "person", "bus", "truck", "motorcycle"
+    ])
+    model.save("drone_detector.pt")
+    model = YOLOWorld("drone_detector.pt")
     result = model.export(format="coreml", imgsz=640, nms=True)
 
     exported: Path | None = None
@@ -95,7 +104,7 @@ def main() -> None:
 
     if exported is None or not exported.exists():
         raise SystemExit(
-            "Export finished but yolov8n.mlpackage was not found.\n"
+            "Export finished but drone_detector.mlpackage was not found.\n"
             f"Checked under: {WORK_DIR}"
         )
 
@@ -106,7 +115,7 @@ def main() -> None:
         shutil.move(str(exported), str(output_path))
 
     print(f"Model saved to: {output_path}")
-    print("In Xcode, drag YOLOv8n.mlpackage into the DroneDetector target if it is not already listed.")
+    print("The Xcode project is already configured to compile DroneDetector.mlpackage.")
 
 
 if __name__ == "__main__":
