@@ -6,8 +6,11 @@ import Vision
 final class DroneVisionDetector: ObservableObject {
     @Published private(set) var detections: [VisionDetection] = []
     @Published private(set) var isModelLoaded = false
-    @Published private(set) var modelName = "Motion + Aerial Heuristics"
+    @Published private(set) var modelName = "Model unavailable"
     @Published private(set) var loadError: String?
+    /// Width / height of the video buffer used to produce `detections`.
+    /// The overlay uses this to match `AVCaptureVideoPreviewLayer` aspect-fill cropping.
+    @Published private(set) var frameAspectRatio: CGFloat = 9.0 / 16.0
 
     private var visionModel: VNCoreMLModel?
     private var request: VNCoreMLRequest?
@@ -20,11 +23,22 @@ final class DroneVisionDetector: ObservableObject {
 
     private var isYOLOBusy = false
     private var previousLumaGrid: [Float]?
-    private var lastMotionPublish = Date.distantPast
     private var lastDetectionPublish = Date.distantPast
-    private let confidenceThreshold: Float = 0.20
-    private let maxDetectionAge: TimeInterval = 0.25
+    private let confidenceThreshold: Float = 0.35
+    private let maxDetectionAge: TimeInterval = 0.6
     private let motionGrid = 16
+    private let requiredConfirmationFrames = 3
+    private let confirmationWindow: TimeInterval = 0.5
+    private let trackMatchIoU: CGFloat = 0.25
+
+    private struct DetectionTrack {
+        var objectType: DetectableObjectType
+        var boundingBox: CGRect
+        var hits: Int
+        var lastSeen: Date
+    }
+
+    private var tracks: [DetectionTrack] = []
 
     private static let cocoClassNames: [String] = [
         "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
@@ -56,25 +70,11 @@ final class DroneVisionDetector: ObservableObject {
     nonisolated func process(sampleBuffer: CMSampleBuffer) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // --- Fast path: motion tracking every frame (does not wait for YOLO) ---
-        let motionUpdate: [VisionDetection]? = stateQueue.sync {
-            let motion = runMotionHeuristic(current: pixelBuffer)
-            guard !motion.isEmpty else { return nil }
-            let now = Date()
-            guard now.timeIntervalSince(lastMotionPublish) > 0.03 else { return nil }
-            lastMotionPublish = now
-            return motion
-        }
-
-        if let motionUpdate {
-            DispatchQueue.main.async { [weak self] in
-                self?.publish(motionUpdate, preferOverExistingYOLO: false)
-            }
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.clearIfStale()
-            }
-        }
+        // Motion identifies image change only. It must never be promoted to a drone
+        // detection: auto-exposure, hand movement, birds, and clouds all trigger it.
+        // It is deliberately excluded from alerting until it can be combined with a
+        // stable model track.
+        DispatchQueue.main.async { [weak self] in self?.clearIfStale() }
 
         // --- Slow path: YOLO when free; drops frames instead of queueing lag ---
         let shouldRunYOLO = stateQueue.sync { () -> Bool in
@@ -103,23 +103,21 @@ final class DroneVisionDetector: ObservableObject {
             let yolo = self.runVisionRequest(request, on: frameCopy)
             guard !yolo.isEmpty else { return }
 
+            let confirmed = self.stateQueue.sync {
+                self.confirmDetections(yolo)
+            }
+            guard !confirmed.isEmpty else { return }
+
             DispatchQueue.main.async {
-                self.publish(yolo, preferOverExistingYOLO: true)
+                self.frameAspectRatio = CGFloat(CVPixelBufferGetWidth(frameCopy)) /
+                    CGFloat(max(CVPixelBufferGetHeight(frameCopy), 1))
+                self.publish(confirmed)
             }
         }
     }
 
-    private func publish(_ results: [VisionDetection], preferOverExistingYOLO: Bool) {
+    private func publish(_ results: [VisionDetection]) {
         guard !results.isEmpty else { return }
-
-        // If we already show a YOLO box, don't let a weak motion box overwrite it
-        // unless this update is also YOLO.
-        if !preferOverExistingYOLO,
-           detections.contains(where: { $0.source == .vision }) ,
-           Date().timeIntervalSince(lastDetectionPublish) < 0.2 {
-            return
-        }
-
         lastDetectionPublish = Date()
         detections = results
     }
@@ -132,6 +130,13 @@ final class DroneVisionDetector: ObservableObject {
     }
 
     private func loadModel() {
+        // A custom drone-aware model takes precedence over the bundled COCO model.
+        // Xcode compiles an mlpackage to this resource name at build time.
+        if let customURL = Bundle.main.url(forResource: "DroneDetector", withExtension: "mlmodelc") {
+            configure(withModelAt: customURL, displayName: "Custom DroneDetector Core ML")
+            return
+        }
+
         if let bundled = try? YOLOv8n(configuration: {
             let config = MLModelConfiguration()
             if #available(iOS 16.0, *) {
@@ -141,19 +146,19 @@ final class DroneVisionDetector: ObservableObject {
             }
             return config
         }()) {
-            configure(with: bundled.model, displayName: "YOLOv8n Core ML")
+            configure(with: bundled.model, displayName: "YOLOv8n Core ML (COCO; custom drone model needed)")
             return
         }
 
         if let compiledURL = Bundle.main.url(forResource: "YOLOv8n", withExtension: "mlmodelc") {
-            configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML")
+            configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML (COCO; custom drone model needed)")
             return
         }
 
         if let packageURL = Bundle.main.url(forResource: "YOLOv8n", withExtension: "mlpackage") {
             do {
                 let compiledURL = try MLModel.compileModel(at: packageURL)
-                configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML")
+                configure(withModelAt: compiledURL, displayName: "YOLOv8n Core ML (COCO; custom drone model needed)")
             } catch {
                 DispatchQueue.main.async {
                     self.loadError = "Failed to compile YOLOv8n: \(error.localizedDescription)"
@@ -231,12 +236,13 @@ final class DroneVisionDetector: ObservableObject {
     }
 
     private func mapRecognizedObjects(_ observations: [VNRecognizedObjectObservation]) -> [VisionDetection] {
+        let types = stateQueue.sync { enabledTypes }
         observations.compactMap { observation in
             guard let top = observation.labels.first else { return nil }
             let name = top.identifier.lowercased()
             guard top.confidence >= confidenceThreshold,
                   let objectType = mapLabelToObjectType(name),
-                  enabledTypes.contains(objectType) else { return nil }
+                  types.contains(objectType) else { return nil }
 
             return VisionDetection(
                 label: objectType.title,
@@ -249,6 +255,7 @@ final class DroneVisionDetector: ObservableObject {
     }
 
     private func mapFeatureValueObservations(_ results: [Any]) -> [VisionDetection] {
+        let types = stateQueue.sync { enabledTypes }
         var confidenceArray: MLMultiArray?
         var coordinatesArray: MLMultiArray?
 
@@ -295,7 +302,7 @@ final class DroneVisionDetector: ObservableObject {
                 : "object-\(bestClass)"
 
             guard let objectType = mapLabelToObjectType(rawLabel),
-                  enabledTypes.contains(objectType) else { continue }
+                  types.contains(objectType) else { continue }
 
             let cx = coordinates[[boxIndex, 0] as [NSNumber]].doubleValue
             let cy = coordinates[[boxIndex, 1] as [NSNumber]].doubleValue
@@ -331,7 +338,7 @@ final class DroneVisionDetector: ObservableObject {
         if value.contains("airplane") || value.contains("aircraft") || value.contains("plane") {
             return .plane
         }
-        if value.contains("drone") || value.contains("uav") || value.contains("quadcopter") || value.contains("kite") {
+        if value.contains("drone") || value.contains("uav") || value.contains("quadcopter") {
             return .drone
         }
         if value.contains("bird") {
@@ -350,6 +357,44 @@ final class DroneVisionDetector: ObservableObject {
             return .motorcycle
         }
         return nil
+    }
+
+    /// Requires consecutive, spatially consistent model observations before an item
+    /// reaches the UI/HUD. Must be called on `stateQueue`.
+    private func confirmDetections(_ candidates: [VisionDetection]) -> [VisionDetection] {
+        let now = Date()
+        tracks.removeAll { now.timeIntervalSince($0.lastSeen) > confirmationWindow }
+
+        var confirmed: [VisionDetection] = []
+        for candidate in candidates {
+            if let index = tracks.firstIndex(where: {
+                $0.objectType == candidate.objectType &&
+                Self.iou($0.boundingBox, candidate.boundingBox) >= trackMatchIoU
+            }) {
+                tracks[index].boundingBox = candidate.boundingBox
+                tracks[index].hits += 1
+                tracks[index].lastSeen = now
+                if tracks[index].hits >= requiredConfirmationFrames {
+                    confirmed.append(candidate)
+                }
+            } else {
+                tracks.append(DetectionTrack(
+                    objectType: candidate.objectType,
+                    boundingBox: candidate.boundingBox,
+                    hits: 1,
+                    lastSeen: now
+                ))
+            }
+        }
+        return confirmed
+    }
+
+    private static func iou(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        let intersectionArea = intersection.width * intersection.height
+        let unionArea = lhs.width * lhs.height + rhs.width * rhs.height - intersectionArea
+        return unionArea > 0 ? intersectionArea / unionArea : 0
     }
 
     /// Must be called on `stateQueue`.

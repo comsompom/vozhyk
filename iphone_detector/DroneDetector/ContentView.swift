@@ -31,6 +31,7 @@ struct ContentView: View {
 
                 DetectionOverlayView(
                     detections: visionDetector.detections,
+                    videoAspectRatio: visionDetector.frameAspectRatio,
                     settings: detectionSettings
                 )
                     .ignoresSafeArea()

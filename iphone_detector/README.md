@@ -42,7 +42,7 @@ open iphone_detector/DroneDetector.xcodeproj
 
 On first launch, allow **Camera**, **Bluetooth**, and **Location** (location is required by iOS for Wi-Fi SSID access).
 
-## Optional: Add YOLOv8n AI Model
+## Replace the COCO model with a drone-aware model
 
 The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model.
 
@@ -64,7 +64,19 @@ Then in Xcode: if the model is not already listed under `DroneDetector/Models`, 
 - **Launch / splash:** `app_start.png` → `LaunchScreen.storyboard` + in-app `SplashView` (~1.2s)
 - **Home screen name:** **Vozhyk**
 
-YOLOv8n detects COCO classes including **airplane**, **bird**, and **kite** — useful proxies for drones until you train a custom drone-only model. The HUD labels these as possible aerial/drone detections.
+The bundled YOLOv8n is trained on COCO and has **no drone class**. It can be used to validate the camera pipeline, but it must not be used as a drone detector. The app no longer maps COCO `kite` to `Drone`, and it requires three spatially consistent model detections before it displays an alert.
+
+To make a real detector, collect and label images with these classes: `drone`, `bird`, `aircraft`, and `kite`. Include clouds, branches, glare, insects, and moving-camera scenes as unlabelled hard negatives. Keep each video/flight recording entirely within one of train, validation, or test splits.
+
+```bash
+cd iphone_detector
+source .venv/bin/activate
+cp datasets/drone.yaml.example datasets/drone.yaml
+# Edit the dataset path in datasets/drone.yaml
+python scripts/train_drone_model.py --data datasets/drone.yaml --device mps
+```
+
+The script exports `DroneDetector/Models/DroneDetector.mlpackage`. Drag it into the Xcode target. The app automatically prefers this custom model over the bundled COCO model.
 
 ## Radio Detection Notes
 

@@ -11,6 +11,8 @@ OpenAI Build Week 2026
 - Vision Framework
 - YOLOv8
 
+Feedback ID: no-active-thread-019f6a5a-40aa-7ce0-acbb-380a60b3acf4
+
 # DroneDetector — iOS App
 
 iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visual drone detection and the phone's Bluetooth/Wi-Fi radios to spot drone-like RF signatures.
