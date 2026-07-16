@@ -16,6 +16,7 @@ final class DroneVisionDetector: ObservableObject {
         let displayName: String
         let request: VNCoreMLRequest
         let classNames: [String]
+        let acceptedTypes: Set<DetectableObjectType>
     }
 
     private struct PipelineLoadError: Error, CustomStringConvertible {
@@ -111,22 +112,27 @@ final class DroneVisionDetector: ObservableObject {
             }
 
             let pipelines = self.stateQueue.sync { self.modelPipelines }
-            let yolo = Self.deduplicatedDetections(
-                pipelines.flatMap { pipeline in
-                    self.runVisionRequest(pipeline.request, on: frameCopy, classNames: pipeline.classNames)
-                }
-            )
+            let yolo = pipelines.flatMap { pipeline in
+                self.runVisionRequest(
+                    pipeline.request,
+                    on: frameCopy,
+                    classNames: pipeline.classNames,
+                    acceptedTypes: pipeline.acceptedTypes
+                )
+            }
             guard !yolo.isEmpty else { return }
 
             let confirmed = self.stateQueue.sync {
-                self.confirmDetections(yolo)
+                self.confirmDetections(yolo.filter(Self.needsConfirmation))
             }
-            guard !confirmed.isEmpty else { return }
+            let immediate = yolo.filter { !Self.needsConfirmation($0) }
+            let publishable = Self.deduplicatedDetections(immediate + confirmed)
+            guard !publishable.isEmpty else { return }
 
             DispatchQueue.main.async {
                 self.frameAspectRatio = CGFloat(CVPixelBufferGetWidth(frameCopy)) /
                     CGFloat(max(CVPixelBufferGetHeight(frameCopy), 1))
-                self.publish(confirmed)
+                self.publish(publishable)
             }
         }
     }
@@ -151,7 +157,8 @@ final class DroneVisionDetector: ObservableObject {
         switch makePipeline(
             resourceName: "DroneDetector",
             displayName: "Plane Drone Core ML",
-            fallbackClassNames: Self.customClassNames
+            fallbackClassNames: Self.customClassNames,
+            acceptedTypes: [.planeDrone, .drone]
         ) {
         case .success(let pipeline):
             loadedPipelines.append(pipeline)
@@ -162,7 +169,8 @@ final class DroneVisionDetector: ObservableObject {
         switch makePipeline(
             resourceName: "YOLOv8n",
             displayName: "COCO YOLOv8n",
-            fallbackClassNames: Self.cocoClassNames
+            fallbackClassNames: Self.cocoClassNames,
+            acceptedTypes: Set(DetectableObjectType.allCases).subtracting([.planeDrone])
         ) {
         case .success(let pipeline):
             loadedPipelines.append(pipeline)
@@ -186,13 +194,15 @@ final class DroneVisionDetector: ObservableObject {
     private func makePipeline(
         resourceName: String,
         displayName: String,
-        fallbackClassNames: [String]
+        fallbackClassNames: [String],
+        acceptedTypes: Set<DetectableObjectType>
     ) -> Result<VisionModelPipeline, PipelineLoadError> {
         if let compiledURL = Bundle.main.url(forResource: resourceName, withExtension: "mlmodelc") {
             return makePipeline(
                 withModelAt: compiledURL,
                 displayName: displayName,
-                fallbackClassNames: fallbackClassNames
+                fallbackClassNames: fallbackClassNames,
+                acceptedTypes: acceptedTypes
             )
         }
 
@@ -205,7 +215,8 @@ final class DroneVisionDetector: ObservableObject {
             return makePipeline(
                 withModelAt: compiledURL,
                 displayName: displayName,
-                fallbackClassNames: fallbackClassNames
+                fallbackClassNames: fallbackClassNames,
+                acceptedTypes: acceptedTypes
             )
         } catch {
             return .failure(PipelineLoadError(description: "Failed to compile \(resourceName): \(error.localizedDescription)"))
@@ -215,7 +226,8 @@ final class DroneVisionDetector: ObservableObject {
     private func makePipeline(
         withModelAt url: URL,
         displayName: String,
-        fallbackClassNames: [String]
+        fallbackClassNames: [String],
+        acceptedTypes: Set<DetectableObjectType>
     ) -> Result<VisionModelPipeline, PipelineLoadError> {
         do {
             let configuration = MLModelConfiguration()
@@ -232,7 +244,8 @@ final class DroneVisionDetector: ObservableObject {
             return .success(VisionModelPipeline(
                 displayName: displayName,
                 request: request,
-                classNames: Self.classNames(from: model) ?? fallbackClassNames
+                classNames: Self.classNames(from: model) ?? fallbackClassNames,
+                acceptedTypes: acceptedTypes
             ))
         } catch {
             return .failure(PipelineLoadError(description: "Failed to load \(displayName): \(error.localizedDescription)"))
@@ -242,7 +255,8 @@ final class DroneVisionDetector: ObservableObject {
     private func runVisionRequest(
         _ request: VNCoreMLRequest,
         on pixelBuffer: CVPixelBuffer,
-        classNames: [String]
+        classNames: [String],
+        acceptedTypes: Set<DetectableObjectType>
     ) -> [VisionDetection] {
         do {
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
@@ -250,22 +264,30 @@ final class DroneVisionDetector: ObservableObject {
             guard let results = request.results, !results.isEmpty else { return [] }
 
             if let recognized = results as? [VNRecognizedObjectObservation] {
-                return mapRecognizedObjects(recognized)
+                return mapRecognizedObjects(recognized, acceptedTypes: acceptedTypes)
             }
 
-            return mapFeatureValueObservations(results, classNames: classNames)
+            return mapFeatureValueObservations(
+                results,
+                classNames: classNames,
+                acceptedTypes: acceptedTypes
+            )
         } catch {
             return []
         }
     }
 
-    private func mapRecognizedObjects(_ observations: [VNRecognizedObjectObservation]) -> [VisionDetection] {
+    private func mapRecognizedObjects(
+        _ observations: [VNRecognizedObjectObservation],
+        acceptedTypes: Set<DetectableObjectType>
+    ) -> [VisionDetection] {
         let types = stateQueue.sync { enabledTypes }
         return observations.compactMap { observation in
             guard let top = observation.labels.first else { return nil }
             let name = top.identifier.lowercased()
             guard top.confidence >= confidenceThreshold,
                   let objectType = mapLabelToObjectType(name),
+                  acceptedTypes.contains(objectType),
                   types.contains(objectType) else { return nil }
 
             return VisionDetection(
@@ -278,7 +300,11 @@ final class DroneVisionDetector: ObservableObject {
         }
     }
 
-    private func mapFeatureValueObservations(_ results: [Any], classNames: [String]) -> [VisionDetection] {
+    private func mapFeatureValueObservations(
+        _ results: [Any],
+        classNames: [String],
+        acceptedTypes: Set<DetectableObjectType>
+    ) -> [VisionDetection] {
         let activeTypes: Set<DetectableObjectType> = stateQueue.sync { self.enabledTypes }
         var confidenceArray: MLMultiArray?
         var coordinatesArray: MLMultiArray?
@@ -327,6 +353,7 @@ final class DroneVisionDetector: ObservableObject {
                 : "object-\(bestClass)"
 
             guard let objectType = mapLabelToObjectType(rawLabel),
+                  acceptedTypes.contains(objectType),
                   activeTypes.contains(objectType) else { continue }
 
             let cx = coordinates[[boxIndex, 0] as [NSNumber]].doubleValue
@@ -440,11 +467,20 @@ final class DroneVisionDetector: ObservableObject {
 
         var kept: [VisionDetection] = []
         for detection in sorted where !kept.contains(where: {
-            iou($0.boundingBox, detection.boundingBox) > 0.45
+            shouldDeduplicate($0, detection) && iou($0.boundingBox, detection.boundingBox) > 0.45
         }) {
             kept.append(detection)
         }
         return kept
+    }
+
+    private static func shouldDeduplicate(_ lhs: VisionDetection, _ rhs: VisionDetection) -> Bool {
+        if lhs.objectType == rhs.objectType {
+            return true
+        }
+
+        let droneLike: Set<DetectableObjectType> = [.drone, .planeDrone, .plane, .bird]
+        return droneLike.contains(lhs.objectType) && droneLike.contains(rhs.objectType)
     }
 
     private static func detectionPriority(_ detection: VisionDetection) -> Int {
@@ -454,6 +490,15 @@ final class DroneVisionDetector: ObservableObject {
         case .plane: return 80
         case .bird: return 70
         case .auto, .bus, .truck, .motorcycle, .human: return 60
+        }
+    }
+
+    private static func needsConfirmation(_ detection: VisionDetection) -> Bool {
+        switch detection.objectType {
+        case .drone, .planeDrone:
+            return true
+        case .auto, .plane, .bird, .human, .bus, .truck, .motorcycle:
+            return false
         }
     }
 

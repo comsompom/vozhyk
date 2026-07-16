@@ -34,7 +34,9 @@ Important: the custom `DroneDetector.mlpackage` was trained only from `plane_dro
   - `DroneDetector.mlpackage` for the new `Plane Drone` class.
   - `YOLOv8n.mlpackage` for the previously good COCO classes such as `auto`, `truck`, `plane`, and `human`.
 - Added both mlpackages to the Xcode target so they are available in the app bundle.
-- Added overlap deduplication so a custom `Plane Drone` detection wins over a generic overlapping `Plane` detection.
+- Scoped the custom model so it can only contribute drone-like detections. Normal object classes stay owned by the original YOLOv8n model.
+- Kept the multi-frame confirmation gate only for `Drone` and `Plane Drone`. Reliable main-model objects such as `Auto`, `Truck`, `Plane`, and `Human` are published immediately.
+- Added overlap deduplication so a custom `Plane Drone` detection wins over a generic overlapping `Plane` detection, while unrelated classes like `Auto` and `Human` are not suppressed.
 
 ## Dataset Creation
 
