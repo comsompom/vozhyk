@@ -54,6 +54,9 @@ final class DroneVisionDetector: ObservableObject {
     ]
 
     private var enabledTypes: Set<DetectableObjectType> = Set(DetectableObjectType.allCases)
+    /// Core ML exports place the dataset label mapping in user-defined metadata.
+    /// This stays COCO only for the bundled fallback model.
+    private var classNames = DroneVisionDetector.cocoClassNames
 
     init() {
         loadModel()
@@ -182,6 +185,7 @@ final class DroneVisionDetector: ObservableObject {
 
             self.visionModel = visionModel
             self.request = request
+            self.classNames = Self.classNames(from: model) ?? Self.cocoClassNames
             DispatchQueue.main.async {
                 self.isModelLoaded = true
                 self.loadError = nil
@@ -237,7 +241,7 @@ final class DroneVisionDetector: ObservableObject {
 
     private func mapRecognizedObjects(_ observations: [VNRecognizedObjectObservation]) -> [VisionDetection] {
         let types = stateQueue.sync { enabledTypes }
-        observations.compactMap { observation in
+        return observations.compactMap { observation in
             guard let top = observation.labels.first else { return nil }
             let name = top.identifier.lowercased()
             guard top.confidence >= confidenceThreshold,
@@ -255,7 +259,7 @@ final class DroneVisionDetector: ObservableObject {
     }
 
     private func mapFeatureValueObservations(_ results: [Any]) -> [VisionDetection] {
-        let types = stateQueue.sync { enabledTypes }
+        let state = stateQueue.sync { (enabledTypes, classNames) }
         var confidenceArray: MLMultiArray?
         var coordinatesArray: MLMultiArray?
 
@@ -297,12 +301,12 @@ final class DroneVisionDetector: ObservableObject {
 
             guard bestScore >= confidenceThreshold else { continue }
 
-            let rawLabel = Self.cocoClassNames.indices.contains(bestClass)
-                ? Self.cocoClassNames[bestClass]
+            let rawLabel = state.1.indices.contains(bestClass)
+                ? state.1[bestClass]
                 : "object-\(bestClass)"
 
             guard let objectType = mapLabelToObjectType(rawLabel),
-                  types.contains(objectType) else { continue }
+                  state.0.contains(objectType) else { continue }
 
             let cx = coordinates[[boxIndex, 0] as [NSNumber]].doubleValue
             let cy = coordinates[[boxIndex, 1] as [NSNumber]].doubleValue
@@ -395,6 +399,25 @@ final class DroneVisionDetector: ObservableObject {
         let intersectionArea = intersection.width * intersection.height
         let unionArea = lhs.width * lhs.height + rhs.width * rhs.height - intersectionArea
         return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+
+    private static func classNames(from model: MLModel) -> [String]? {
+        guard
+            let userDefined = model.modelDescription.metadata[MLModelMetadataKey.creatorDefinedKey] as? [String: Any],
+            let rawClasses = userDefined["classes"] as? String
+        else { return nil }
+
+        // Ultralytics Core ML export stores labels as e.g.
+        // "{0: 'drone', 1: 'bird'}". Accept a JSON-style list too, so the
+        // app remains compatible with equivalent exports.
+        let pattern = #"(?:\d+\s*:\s*)?[\"']([^\"']+)[\"']"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(rawClasses.startIndex..., in: rawClasses)
+        let names = expression.matches(in: rawClasses, range: range).compactMap { match -> String? in
+            guard let valueRange = Range(match.range(at: 1), in: rawClasses) else { return nil }
+            return String(rawClasses[valueRange])
+        }
+        return names.isEmpty ? nil : names
     }
 
     /// Must be called on `stateQueue`.
