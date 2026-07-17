@@ -336,21 +336,54 @@ button {
 }
 
 .canvas-wrap {
-  display: grid;
-  place-items: center;
+  display: block;
   min-height: 360px;
+  max-height: calc(100vh - 360px);
   overflow: hidden;
   border: 1px solid rgba(132, 184, 202, 0.16);
   background: #020406;
+  text-align: center;
+}
+
+.canvas-wrap.zoomed {
+  overflow: auto;
+  text-align: left;
 }
 
 canvas {
-  max-width: 100%;
-  height: auto;
+  display: block;
+  margin: 0 auto;
 }
 
 .drawing-mask canvas {
   cursor: crosshair;
+}
+
+.zoomed canvas {
+  margin: 0;
+}
+
+.zoom-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 220px) auto auto 56px 18px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.zoom-toolbar .ghost-button {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.zoom-toolbar input[type="range"] {
+  padding: 0;
+}
+
+#zoom-value {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
 }
 
 .actions {
@@ -383,6 +416,17 @@ canvas {
 .reject-button {
   background: var(--red);
   color: #170409;
+}
+
+.cleanup-button {
+  border: 1px solid rgba(255, 214, 102, 0.45);
+  background: rgba(255, 214, 102, 0.15);
+  color: var(--yellow);
+}
+
+.cleanup-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .ghost-button {
@@ -494,5 +538,15 @@ canvas {
   .filmstrip {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     max-height: none;
+  }
+
+  .zoom-toolbar {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .zoom-toolbar #zoom-reset,
+  .zoom-toolbar #zoom-value,
+  .zoom-toolbar .info-dot {
+    display: none;
   }
 }

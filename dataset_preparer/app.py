@@ -480,6 +480,20 @@ def export_master_dataset():
     return summary
 
 
+def clear_source_projects():
+    removed_projects = PROJECTS_DIR.exists()
+    removed_uploads = UPLOADS_DIR.exists()
+    shutil.rmtree(PROJECTS_DIR, ignore_errors=True)
+    shutil.rmtree(UPLOADS_DIR, ignore_errors=True)
+    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    return {
+        "removed_projects": removed_projects,
+        "removed_uploads": removed_uploads,
+        "master_summary": master_summary(),
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html", projects=list_projects(), active_project=None)
@@ -605,6 +619,11 @@ def export_api(project_id):
 
     summary = export_master_dataset()
     return jsonify(summary)
+
+
+@app.route("/api/sources/clear", methods=["POST"])
+def clear_sources_api():
+    return jsonify(clear_source_projects())
 
 
 @app.route("/media/<project_id>/frames/<filename>")

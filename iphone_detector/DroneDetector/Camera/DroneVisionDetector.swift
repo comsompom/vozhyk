@@ -158,7 +158,7 @@ final class DroneVisionDetector: ObservableObject {
             resourceName: "DroneDetector",
             displayName: "Plane Drone Core ML",
             fallbackClassNames: Self.customClassNames,
-            acceptedTypes: [.planeDrone, .drone]
+            acceptedTypes: [.planeDrone]
         ) {
         case .success(let pipeline):
             loadedPipelines.append(pipeline)

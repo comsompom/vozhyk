@@ -90,6 +90,14 @@
                 </div>
                 <button class="icon-button" id="next-frame" title="Show the next extracted frame." type="button">›</button>
               </div>
+              <div class="zoom-toolbar" aria-label="Image zoom controls">
+                <button class="ghost-button" id="zoom-out" type="button" title="Zoom out for the current frame.">Zoom -</button>
+                <input id="zoom-slider" type="range" min="1" max="6" step="0.25" value="1" aria-label="Zoom level">
+                <button class="ghost-button" id="zoom-in" type="button" title="Zoom in for more precise mask drawing.">Zoom +</button>
+                <button class="ghost-button" id="zoom-reset" type="button" title="Reset zoom to fit the image.">Reset</button>
+                <span id="zoom-value">100%</span>
+                <button class="info-dot" type="button" aria-label="Zoom help" data-help="Zoom changes only the review view. Manual mask points are saved in original image coordinates, so exported masks and YOLO labels still match the normal image size.">i</button>
+              </div>
               <div class="canvas-wrap">
                 <canvas id="frame-canvas"></canvas>
               </div>
@@ -102,8 +110,9 @@
                 <button class="reject-button" id="reject-frame" type="button" title="Reject this frame and remove it from the master dataset if it was previously approved.">Remove</button>
                 <button class="ghost-button" id="pending-frame" type="button" title="Keep this frame undecided and remove any approved copy from the master dataset.">Mark Pending</button>
                 <button class="export-button" id="export-dataset" type="button" title="Export all approved frames accumulated from all videos into YOLO train/val/test folders.">Build Master Dataset</button>
+                <button class="cleanup-button" id="clear-sources" type="button" disabled title="Remove uploaded videos and per-project extracted frames after the master dataset has been built.">Clear Source Projects</button>
               </div>
-              <button class="info-dot action-info" type="button" aria-label="Review action help" data-help="Approve saves the current frame into the master dataset. Remove excludes it. Draw Mask lets you replace the mask before approval. Build Master Dataset exports all approved frames from every video.">i</button>
+              <button class="info-dot action-info" type="button" aria-label="Review action help" data-help="Approve saves the current frame into the master dataset. Remove excludes it. Draw Mask lets you replace the mask before approval. Build Master Dataset exports all approved frames from every video. Clear Source Projects removes upload/project working files but keeps the master dataset.">i</button>
               <p class="status-line" id="status-line"></p>
             </section>
 

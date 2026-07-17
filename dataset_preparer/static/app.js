@@ -6,13 +6,20 @@ let frames = [];
 let currentIndex = 0;
 let drawMode = false;
 let manualPolygon = [];
+let fitScale = 1;
+let zoomLevel = 1;
 let canvasScale = 1;
 let currentImage = null;
+let exportBuilt = false;
 
 const canvas = document.getElementById("frame-canvas");
 const ctx = canvas?.getContext("2d");
 const filmstrip = document.getElementById("filmstrip");
 const statusLine = document.getElementById("status-line");
+const zoomSlider = document.getElementById("zoom-slider");
+const zoomValue = document.getElementById("zoom-value");
+const clearSourcesButton = document.getElementById("clear-sources");
+const canvasWrap = document.querySelector(".canvas-wrap");
 
 function setStatus(message) {
   if (statusLine) statusLine.textContent = message || "";
@@ -27,6 +34,22 @@ function updateDrawControls() {
   document.querySelectorAll(".draw-only").forEach((element) => {
     element.classList.toggle("hidden", !drawMode);
   });
+}
+
+function updateZoomControls() {
+  if (zoomSlider) zoomSlider.value = String(zoomLevel);
+  if (zoomValue) zoomValue.textContent = `${Math.round(zoomLevel * 100)}%`;
+  canvasWrap?.classList.toggle("zoomed", zoomLevel > 1);
+}
+
+function setZoom(nextZoom) {
+  zoomLevel = Math.max(1, Math.min(6, Number(nextZoom) || 1));
+  updateZoomControls();
+  redrawCanvas(frames[currentIndex]);
+}
+
+function resetZoom() {
+  setZoom(1);
 }
 
 function updateStats() {
@@ -69,7 +92,7 @@ function drawOverlay(frame) {
   if (drawMode) {
     manualPolygon.forEach((point) => {
       ctx.beginPath();
-      ctx.arc(point[0] * canvasScale, point[1] * canvasScale, 4, 0, Math.PI * 2);
+      ctx.arc(point[0] * canvasScale, point[1] * canvasScale, Math.max(4, 5 * zoomLevel), 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255, 214, 102, 0.98)";
       ctx.fill();
       ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
@@ -94,6 +117,9 @@ function drawOverlay(frame) {
 function redrawCanvas(frame) {
   if (!canvas || !ctx || !frame || !currentImage) return;
 
+  canvasScale = fitScale * zoomLevel;
+  canvas.width = Math.round(currentImage.width * canvasScale);
+  canvas.height = Math.round(currentImage.height * canvasScale);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
   drawOverlay(frame);
@@ -109,11 +135,10 @@ function drawFrame(frame) {
 
     const maxWidth = canvas.parentElement.clientWidth;
     const maxHeight = Math.max(320, window.innerHeight - 310);
-    canvasScale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+    fitScale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+    canvasScale = fitScale * zoomLevel;
     currentImage = image;
 
-    canvas.width = Math.round(image.width * canvasScale);
-    canvas.height = Math.round(image.height * canvasScale);
     redrawCanvas(frame);
   };
   image.src = frameUrl(frame);
@@ -144,6 +169,9 @@ function renderCurrent() {
   const frame = frames[currentIndex];
   if (!frame) return;
 
+  zoomLevel = 1;
+  currentImage = null;
+  updateZoomControls();
   document.getElementById("frame-title").textContent = `${frame.id}`;
   document.getElementById("frame-meta").textContent =
     `time ${frame.timestamp}s | source frame ${frame.frame_index} | ${frame.decision}${frame.has_mask ? "" : " | no mask proposal"}${frame.mask_source === "manual" ? " | manual mask" : ""}`;
@@ -281,8 +309,39 @@ async function exportDataset() {
   if (payload.total_items !== undefined) {
     project.master_summary = { ...(project.master_summary || {}), total: payload.total_items };
   }
+  exportBuilt = true;
+  if (clearSourcesButton) clearSourcesButton.disabled = false;
   updateStats();
   setStatus(`Export ready: ${payload.path} | total ${payload.total_items}, train ${payload.counts.train}, val ${payload.counts.val}, test ${payload.counts.test}`);
+}
+
+async function clearSources() {
+  if (!exportBuilt) {
+    setStatus("Build the master dataset before clearing source projects.");
+    return;
+  }
+
+  const confirmed = window.confirm("Remove uploaded videos and per-project extracted frames? The master dataset and export will be kept.");
+  if (!confirmed) return;
+
+  const response = await fetch("/api/sources/clear", { method: "POST" });
+  const payload = await response.json();
+  if (!response.ok) {
+    setStatus(payload.error || "Could not clear source projects.");
+    return;
+  }
+
+  if (payload.master_summary) project.master_summary = payload.master_summary;
+  frames = [];
+  currentIndex = 0;
+  if (filmstrip) filmstrip.innerHTML = "";
+  if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (clearSourcesButton) clearSourcesButton.disabled = true;
+  setStatus("Source projects cleared. Master dataset/export kept. Upload a new video to continue.");
+  updateStats();
+  window.setTimeout(() => {
+    window.location.href = "/";
+  }, 900);
 }
 
 function bindControls() {
@@ -304,6 +363,11 @@ function bindControls() {
   document.getElementById("reject-frame")?.addEventListener("click", () => setDecision("rejected"));
   document.getElementById("pending-frame")?.addEventListener("click", () => setDecision("pending"));
   document.getElementById("export-dataset")?.addEventListener("click", exportDataset);
+  document.getElementById("clear-sources")?.addEventListener("click", clearSources);
+  document.getElementById("zoom-in")?.addEventListener("click", () => setZoom(zoomLevel + 0.25));
+  document.getElementById("zoom-out")?.addEventListener("click", () => setZoom(zoomLevel - 0.25));
+  document.getElementById("zoom-reset")?.addEventListener("click", resetZoom);
+  zoomSlider?.addEventListener("input", (event) => setZoom(event.target.value));
   canvas?.addEventListener("click", addManualPoint);
 
   window.addEventListener("keydown", (event) => {
@@ -313,6 +377,18 @@ function bindControls() {
     if (drawMode && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
       event.preventDefault();
       return saveManualMask();
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === "=") {
+      event.preventDefault();
+      return setZoom(zoomLevel + 0.25);
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === "-") {
+      event.preventDefault();
+      return setZoom(zoomLevel - 0.25);
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === "0") {
+      event.preventDefault();
+      return resetZoom();
     }
     if (drawMode) return;
 

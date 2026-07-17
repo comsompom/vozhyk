@@ -8,10 +8,12 @@ Standalone Flask application for preparing YOLO-ready `plane_drone` datasets fro
 - Extract sampled frames.
 - Generate automatic mask and bounding-box proposals with OpenCV motion/contour analysis.
 - Review every candidate frame with the mask overlay.
+- Zoom the review image for precise manual mask drawing.
 - Approve or reject frames.
 - Replace any automatic mask with a manually drawn polygon mask.
 - Add approved frames into one persistent master dataset across multiple videos.
 - Export the full master dataset into YOLO-ready detection and segmentation datasets.
+- Clear uploaded videos and per-project frame sources after building the master dataset.
 - Preserve the iPhone app's current class order, where `plane_drone` is class ID `3`.
 
 ## Main Settings
@@ -64,3 +66,7 @@ Each export contains:
 The automatic masks are proposals. Inspect them carefully before approving frames.
 
 Approving a frame adds or updates it in the master dataset immediately. Changing an approved frame back to pending/rejected, or replacing its mask manually, removes the stale copy until you approve it again.
+
+Zoom affects only the browser review view. Manual mask points are converted back to original image coordinates before saving, so exported masks and YOLO labels stay aligned with the normal image size.
+
+After `Build Master Dataset` succeeds, `Clear Source Projects` removes `workspace/projects` and `workspace/uploads` while keeping `workspace/master_dataset`.
