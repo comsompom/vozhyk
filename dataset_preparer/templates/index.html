@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Drone Dataset Preparer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="shell" data-project-id="{{ active_project.id if active_project else '' }}">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <div>
+            <h1>Drone Dataset Preparer</h1>
+            <p>YOLO frame review pipeline</p>
+          </div>
+        </div>
+
+        <form class="upload-panel" method="post" action="{{ url_for('create_project') }}" enctype="multipart/form-data">
+          <label class="field">
+            <span>Video file</span>
+            <input type="file" name="video" accept="video/*" required>
+          </label>
+          <label class="field">
+            <span>Class name</span>
+            <select name="class_name">
+              <option value="plane_drone" selected>plane_drone</option>
+              <option value="drone">drone</option>
+            </select>
+          </label>
+          <div class="grid-fields">
+            <label class="field">
+              <span>Sample FPS</span>
+              <input type="number" name="sample_fps" value="4" min="0.2" max="30" step="0.2">
+            </label>
+            <label class="field">
+              <span>Min mask area</span>
+              <input type="number" name="min_area" value="20" min="1" step="1">
+            </label>
+          </div>
+          <label class="field">
+            <span>Max object area ratio</span>
+            <input type="number" name="max_area_ratio" value="0.04" min="0.001" max="0.5" step="0.001">
+          </label>
+          <button class="primary-button" type="submit">Process Video</button>
+        </form>
+
+        <section class="projects">
+          <h2>Projects</h2>
+          {% for project in projects %}
+            <a class="project-link {% if active_project and active_project.id == project.id %}active{% endif %}" href="{{ url_for('project_view', project_id=project.id) }}">
+              <span>{{ project.name }}</span>
+              <small>{{ project.frames|length }} frames</small>
+            </a>
+          {% else %}
+            <p class="muted">No prepared videos yet.</p>
+          {% endfor %}
+        </section>
+      </aside>
+
+      <section class="workspace">
+        {% if active_project %}
+          <header class="topbar">
+            <div>
+              <p class="eyebrow">Active project</p>
+              <h2>{{ active_project.name }}</h2>
+            </div>
+            <div class="stats">
+              <span><strong id="stat-total">0</strong>Total</span>
+              <span><strong id="stat-approved">0</strong>Approved</span>
+              <span><strong id="stat-rejected">0</strong>Rejected</span>
+              <span><strong id="stat-masked">0</strong>Masked</span>
+            </div>
+          </header>
+
+          <div class="review-layout">
+            <section class="viewer">
+              <div class="viewer-toolbar">
+                <button class="icon-button" id="prev-frame" title="Previous frame" type="button">‹</button>
+                <div>
+                  <strong id="frame-title">Frame</strong>
+                  <span id="frame-meta"></span>
+                </div>
+                <button class="icon-button" id="next-frame" title="Next frame" type="button">›</button>
+              </div>
+              <div class="canvas-wrap">
+                <canvas id="frame-canvas"></canvas>
+              </div>
+              <div class="actions">
+                <button class="draw-button" id="draw-mask" type="button">Draw Mask</button>
+                <button class="ghost-button draw-only hidden" id="undo-point" type="button">Undo Point</button>
+                <button class="save-mask-button draw-only hidden" id="save-mask" type="button">Save Mask</button>
+                <button class="ghost-button draw-only hidden" id="cancel-mask" type="button">Cancel Draw</button>
+                <button class="approve-button" id="approve-frame" type="button">Approve</button>
+                <button class="reject-button" id="reject-frame" type="button">Remove</button>
+                <button class="ghost-button" id="pending-frame" type="button">Mark Pending</button>
+                <button class="export-button" id="export-dataset" type="button">Build Training Dataset</button>
+              </div>
+              <p class="status-line" id="status-line"></p>
+            </section>
+
+            <section class="filmstrip" id="filmstrip" aria-label="Extracted frames"></section>
+          </div>
+        {% else %}
+          <section class="empty-state">
+            <div>
+              <p class="eyebrow">Start pipeline</p>
+              <h2>Upload a drone video to generate reviewable frame masks.</h2>
+              <p>The app will extract frames, create automatic mask proposals, then wait for your approval before producing YOLO training folders.</p>
+            </div>
+          </section>
+        {% endif %}
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
