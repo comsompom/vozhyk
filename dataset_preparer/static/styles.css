@@ -79,6 +79,7 @@ p {
 .muted,
 .field span,
 .project-link small,
+.stats small,
 #frame-meta {
   color: var(--muted);
 }
@@ -117,6 +118,7 @@ select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  align-items: start;
 }
 
 button {
@@ -127,6 +129,78 @@ button {
   color: #041012;
   cursor: pointer;
   font-weight: 700;
+}
+
+.info-dot {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1px solid rgba(0, 229, 255, 0.6);
+  border-radius: 50%;
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--cyan);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.info-dot::after {
+  content: attr(data-help);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: min(260px, calc(100vw - 48px));
+  padding: 9px 10px;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 6px;
+  background: #081018;
+  color: var(--text);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 500;
+  text-align: left;
+  text-transform: none;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.info-dot::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  bottom: calc(100% + 3px);
+  z-index: 21;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid rgba(0, 229, 255, 0.35);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.35);
+  background: #081018;
+  pointer-events: none;
+  opacity: 0;
+  transform: rotate(45deg) translateY(4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.info-dot:hover::after,
+.info-dot:focus-visible::after,
+.info-dot:hover::before,
+.info-dot:focus-visible::before {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.info-dot:focus-visible {
+  outline: 2px solid rgba(35, 255, 167, 0.55);
+  outline-offset: 2px;
 }
 
 .primary-button,
@@ -199,6 +273,7 @@ button {
 .stats span {
   display: grid;
   min-width: 86px;
+  max-width: 132px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -211,6 +286,13 @@ button {
 .stats strong {
   color: var(--text);
   font-size: 22px;
+}
+
+.stats small {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.25;
+  text-transform: none;
 }
 
 .review-layout {
@@ -276,6 +358,10 @@ canvas {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
+}
+
+.action-info {
+  margin-top: 9px;
 }
 
 .hidden {

@@ -14,6 +14,14 @@ Standalone Flask application for preparing YOLO-ready `plane_drone` datasets fro
 - Export the full master dataset into YOLO-ready detection and segmentation datasets.
 - Preserve the iPhone app's current class order, where `plane_drone` is class ID `3`.
 
+## Main Settings
+
+- `Video file`: one source video to split into review frames.
+- `Class name`: use `plane_drone` for the current iPhone model flow.
+- `Sample FPS`: number of images extracted per second of video. Use `2-5` for most drone videos.
+- `Min mask area`: smallest automatic motion region accepted as a drone proposal. Lower it for very far drones; raise it to reject tiny noise.
+- `Max object area ratio`: largest proposal size as a fraction of the image. Keep near `0.02-0.06` for small flying objects.
+
 ## Run
 
 ```bash

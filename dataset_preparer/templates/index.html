@@ -21,6 +21,7 @@
           <label class="field">
             <span>Video file</span>
             <input type="file" name="video" accept="video/*" required>
+            <button class="info-dot" type="button" aria-label="Video file help" data-help="Choose one source video. The app will split it into review images and keep approved frames in the shared master dataset.">i</button>
           </label>
           <label class="field">
             <span>Class name</span>
@@ -28,22 +29,26 @@
               <option value="plane_drone" selected>plane_drone</option>
               <option value="drone">drone</option>
             </select>
+            <button class="info-dot" type="button" aria-label="Class name help" data-help="Use plane_drone for your current iPhone model flow. It exports as YOLO class ID 3.">i</button>
           </label>
           <div class="grid-fields">
             <label class="field">
               <span>Sample FPS</span>
               <input type="number" name="sample_fps" value="4" min="0.2" max="30" step="0.2">
+              <button class="info-dot" type="button" aria-label="Sample FPS help" data-help="How many images to extract per second. Use 2-5 for most drone videos; higher creates more review work.">i</button>
             </label>
             <label class="field">
               <span>Min mask area</span>
               <input type="number" name="min_area" value="20" min="1" step="1">
+              <button class="info-dot" type="button" aria-label="Min mask area help" data-help="Smallest automatic motion blob accepted as a drone proposal. Raise it to ignore tiny noise; lower it for far drones.">i</button>
             </label>
           </div>
           <label class="field">
             <span>Max object area ratio</span>
             <input type="number" name="max_area_ratio" value="0.04" min="0.001" max="0.5" step="0.001">
+            <button class="info-dot" type="button" aria-label="Max object area ratio help" data-help="Largest allowed proposal as part of the full image. Keep near 0.02-0.06 for small flying objects; lower it if large false masks appear.">i</button>
           </label>
-          <button class="primary-button" type="submit">Process Video</button>
+          <button class="primary-button" type="submit" title="Upload the selected video, extract frames, and create automatic mask proposals.">Process Video</button>
         </form>
 
         <section class="projects">
@@ -67,37 +72,38 @@
               <h2>{{ active_project.name }}</h2>
             </div>
             <div class="stats">
-              <span><strong id="stat-total">0</strong>Total</span>
-              <span><strong id="stat-approved">0</strong>Approved</span>
-              <span><strong id="stat-rejected">0</strong>Rejected</span>
-              <span><strong id="stat-masked">0</strong>Masked</span>
-              <span><strong id="stat-master">0</strong>Dataset</span>
+              <span title="Frames extracted from the currently open video."><strong id="stat-total">0</strong>Total<small>current video frames</small></span>
+              <span title="Frames approved in the currently open video."><strong id="stat-approved">0</strong>Approved<small>added to dataset</small></span>
+              <span title="Frames rejected in the currently open video."><strong id="stat-rejected">0</strong>Rejected<small>not exported</small></span>
+              <span title="Frames with an automatic or manual mask proposal."><strong id="stat-masked">0</strong>Masked<small>has label data</small></span>
+              <span title="Approved frames accumulated across all processed videos."><strong id="stat-master">0</strong>Dataset<small>all videos total</small></span>
             </div>
           </header>
 
           <div class="review-layout">
             <section class="viewer">
               <div class="viewer-toolbar">
-                <button class="icon-button" id="prev-frame" title="Previous frame" type="button">‹</button>
+                <button class="icon-button" id="prev-frame" title="Show the previous extracted frame." type="button">‹</button>
                 <div>
                   <strong id="frame-title">Frame</strong>
                   <span id="frame-meta"></span>
                 </div>
-                <button class="icon-button" id="next-frame" title="Next frame" type="button">›</button>
+                <button class="icon-button" id="next-frame" title="Show the next extracted frame." type="button">›</button>
               </div>
               <div class="canvas-wrap">
                 <canvas id="frame-canvas"></canvas>
               </div>
               <div class="actions">
-                <button class="draw-button" id="draw-mask" type="button">Draw Mask</button>
-                <button class="ghost-button draw-only hidden" id="undo-point" type="button">Undo Point</button>
-                <button class="save-mask-button draw-only hidden" id="save-mask" type="button">Save Mask</button>
-                <button class="ghost-button draw-only hidden" id="cancel-mask" type="button">Cancel Draw</button>
-                <button class="approve-button" id="approve-frame" type="button">Approve</button>
-                <button class="reject-button" id="reject-frame" type="button">Remove</button>
-                <button class="ghost-button" id="pending-frame" type="button">Mark Pending</button>
-                <button class="export-button" id="export-dataset" type="button">Build Master Dataset</button>
+                <button class="draw-button" id="draw-mask" type="button" title="Replace the automatic mask by clicking polygon points around the drone.">Draw Mask</button>
+                <button class="ghost-button draw-only hidden" id="undo-point" type="button" title="Remove the last point from the manual polygon.">Undo Point</button>
+                <button class="save-mask-button draw-only hidden" id="save-mask" type="button" title="Save the manual polygon as this frame's mask and bounding box.">Save Mask</button>
+                <button class="ghost-button draw-only hidden" id="cancel-mask" type="button" title="Exit manual drawing without saving changes.">Cancel Draw</button>
+                <button class="approve-button" id="approve-frame" type="button" title="Accept this frame and add or update it in the shared master dataset.">Approve</button>
+                <button class="reject-button" id="reject-frame" type="button" title="Reject this frame and remove it from the master dataset if it was previously approved.">Remove</button>
+                <button class="ghost-button" id="pending-frame" type="button" title="Keep this frame undecided and remove any approved copy from the master dataset.">Mark Pending</button>
+                <button class="export-button" id="export-dataset" type="button" title="Export all approved frames accumulated from all videos into YOLO train/val/test folders.">Build Master Dataset</button>
               </div>
+              <button class="info-dot action-info" type="button" aria-label="Review action help" data-help="Approve saves the current frame into the master dataset. Remove excludes it. Draw Mask lets you replace the mask before approval. Build Master Dataset exports all approved frames from every video.">i</button>
               <p class="status-line" id="status-line"></p>
             </section>
 
