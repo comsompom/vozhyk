@@ -13,6 +13,10 @@ OpenAI Build Week 2026
 
 feedback id: 019f6a59-5a57-74a2-98dd-8c77f5f37a1a
 
+<p align="center">
+  <img src="../logo.png" alt="Vozhyk iOS logo" width="220">
+</p>
+
 # DroneDetector — iOS App
 
 iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visual drone detection and the phone's Bluetooth/Wi-Fi radios to spot drone-like RF signatures.
