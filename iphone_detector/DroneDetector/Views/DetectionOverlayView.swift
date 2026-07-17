@@ -62,6 +62,7 @@ struct StatusHUDView: View {
     let modelLoaded: Bool
     let modelLoadError: String?
     let radioStatus: String
+    let cameraZoomFactor: CGFloat
 
     @State private var selectedPanel: HUDPanel? = nil
 
@@ -148,6 +149,9 @@ struct StatusHUDView: View {
         case .camera:
             Text(cameraActive ? "Camera ON" : "Camera OFF")
                 .font(.callout.weight(.semibold))
+            Text("Auto zoom: \(formattedZoomFactor)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(cameraZoomFactor > 1.01 ? .cyan : .secondary)
             Text(cameraActive ? "Visual detection is receiving camera frames." : "Camera scanning is paused or unavailable.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -271,5 +275,13 @@ struct StatusHUDView: View {
         case .medium: return .yellow
         case .high: return .red
         }
+    }
+
+    private var formattedZoomFactor: String {
+        let rounded = (cameraZoomFactor * 10).rounded() / 10
+        if rounded == rounded.rounded() {
+            return "\(Int(rounded))x"
+        }
+        return String(format: "%.1fx", rounded)
     }
 }

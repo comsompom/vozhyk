@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import CoreMotion
 import UIKit
 
 @MainActor
@@ -7,11 +8,32 @@ final class CameraManager: NSObject, ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var authorizationStatus: AVAuthorizationStatus = .notDetermined
     @Published private(set) var errorMessage: String?
+    @Published private(set) var currentZoomFactor: CGFloat = 1.0
 
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.vozhyk.drone-detector.camera")
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let motionManager = CMMotionManager()
+    private let motionQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "com.vozhyk.drone-detector.motion"
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
+
     private var isConfigured = false
+    private var cameraDevice: AVCaptureDevice?
+    private var stableSince: Date?
+    private var lastZoomStepAt = Date.distantPast
+    private var targetZoomFactor: CGFloat = 1.0
+    private var smoothedRotationRate = 0.0
+
+    private let stableDelay: TimeInterval = 1.5
+    private let zoomStepInterval: TimeInterval = 1.0
+    private let zoomStepFactor: CGFloat = 1.0
+    private let maxAutoZoomFactor: CGFloat = 5.0
+    private let stableRotationRate = 0.08
+    private let movementResetRotationRate = 0.14
     nonisolated(unsafe) private var frameHandler: ((CMSampleBuffer) -> Void)?
 
     override init() {
@@ -55,6 +77,7 @@ final class CameraManager: NSObject, ObservableObject {
             }
             if !self.session.isRunning {
                 self.session.startRunning()
+                self.startAutoZoomMonitor()
                 Task { @MainActor in
                     self.isRunning = self.session.isRunning
                 }
@@ -66,6 +89,8 @@ final class CameraManager: NSObject, ObservableObject {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             if self.session.isRunning {
+                self.stopAutoZoomMonitor()
+                self.resetZoom()
                 self.session.stopRunning()
                 Task { @MainActor in
                     self.isRunning = false
@@ -96,6 +121,7 @@ final class CameraManager: NSObject, ObservableObject {
         }
 
         session.addInput(input)
+        cameraDevice = camera
 
         do {
             try camera.lockForConfiguration()
@@ -147,6 +173,92 @@ final class CameraManager: NSObject, ObservableObject {
 
         session.commitConfiguration()
         isConfigured = true
+    }
+
+    private func startAutoZoomMonitor() {
+        guard motionManager.isDeviceMotionAvailable, !motionManager.isDeviceMotionActive else { return }
+        stableSince = nil
+        lastZoomStepAt = .distantPast
+        smoothedRotationRate = 0
+        motionManager.deviceMotionUpdateInterval = 0.1
+        motionManager.startDeviceMotionUpdates(to: motionQueue) { [weak self] motion, _ in
+            guard let self, let motion else { return }
+            self.sessionQueue.async { [weak self] in
+                self?.handleDeviceMotion(motion)
+            }
+        }
+    }
+
+    private func stopAutoZoomMonitor() {
+        if motionManager.isDeviceMotionActive {
+            motionManager.stopDeviceMotionUpdates()
+        }
+        stableSince = nil
+        lastZoomStepAt = .distantPast
+        smoothedRotationRate = 0
+    }
+
+    private func handleDeviceMotion(_ motion: CMDeviceMotion) {
+        let rate = motion.rotationRate
+        let rotationMagnitude = sqrt(rate.x * rate.x + rate.y * rate.y + rate.z * rate.z)
+        smoothedRotationRate = smoothedRotationRate * 0.7 + rotationMagnitude * 0.3
+
+        let now = Date()
+        if smoothedRotationRate >= movementResetRotationRate {
+            stableSince = nil
+            lastZoomStepAt = .distantPast
+            resetZoom()
+            return
+        }
+
+        guard smoothedRotationRate <= stableRotationRate else {
+            stableSince = nil
+            return
+        }
+
+        if stableSince == nil {
+            stableSince = now
+            return
+        }
+
+        guard let stableSince,
+              now.timeIntervalSince(stableSince) >= stableDelay,
+              now.timeIntervalSince(lastZoomStepAt) >= zoomStepInterval else { return }
+
+        lastZoomStepAt = now
+        applyZoom(targetZoomFactor + zoomStepFactor, ramp: true)
+    }
+
+    private func resetZoom() {
+        applyZoom(1.0, ramp: true)
+    }
+
+    private func applyZoom(_ requestedFactor: CGFloat, ramp: Bool) {
+        guard let camera = cameraDevice else { return }
+        let maxSupportedZoom = min(maxAutoZoomFactor, camera.activeFormat.videoMaxZoomFactor)
+        let nextZoom = min(max(requestedFactor, 1.0), maxSupportedZoom)
+        guard abs(nextZoom - targetZoomFactor) > 0.01 else { return }
+
+        do {
+            try camera.lockForConfiguration()
+            if camera.isRampingVideoZoom {
+                camera.cancelVideoZoomRamp()
+            }
+            if ramp {
+                camera.ramp(toVideoZoomFactor: nextZoom, withRate: 4.0)
+            } else {
+                camera.videoZoomFactor = nextZoom
+            }
+            camera.unlockForConfiguration()
+            targetZoomFactor = nextZoom
+            Task { @MainActor in
+                self.currentZoomFactor = nextZoom
+            }
+        } catch {
+            Task { @MainActor in
+                self.errorMessage = "Unable to change camera zoom"
+            }
+        }
     }
 }
 

@@ -48,7 +48,8 @@ struct ContentView: View {
                 modelName: visionDetector.modelName,
                 modelLoaded: visionDetector.isModelLoaded,
                 modelLoadError: visionDetector.loadError,
-                radioStatus: radioScanner.statusMessage
+                radioStatus: radioScanner.statusMessage,
+                cameraZoomFactor: cameraManager.currentZoomFactor
             )
 
             VStack {
