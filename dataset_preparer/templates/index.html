@@ -71,6 +71,7 @@
               <span><strong id="stat-approved">0</strong>Approved</span>
               <span><strong id="stat-rejected">0</strong>Rejected</span>
               <span><strong id="stat-masked">0</strong>Masked</span>
+              <span><strong id="stat-master">0</strong>Dataset</span>
             </div>
           </header>
 
@@ -95,7 +96,7 @@
                 <button class="approve-button" id="approve-frame" type="button">Approve</button>
                 <button class="reject-button" id="reject-frame" type="button">Remove</button>
                 <button class="ghost-button" id="pending-frame" type="button">Mark Pending</button>
-                <button class="export-button" id="export-dataset" type="button">Build Training Dataset</button>
+                <button class="export-button" id="export-dataset" type="button">Build Master Dataset</button>
               </div>
               <p class="status-line" id="status-line"></p>
             </section>
@@ -107,7 +108,7 @@
             <div>
               <p class="eyebrow">Start pipeline</p>
               <h2>Upload a drone video to generate reviewable frame masks.</h2>
-              <p>The app will extract frames, create automatic mask proposals, then wait for your approval before producing YOLO training folders.</p>
+              <p>The app will extract frames, create automatic mask proposals, and add approved frames into one shared training dataset across videos.</p>
             </div>
           </section>
         {% endif %}

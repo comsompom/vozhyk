@@ -16,6 +16,10 @@ BASE_DIR = Path(__file__).resolve().parent
 WORKSPACE_DIR = BASE_DIR / "workspace"
 UPLOADS_DIR = WORKSPACE_DIR / "uploads"
 PROJECTS_DIR = WORKSPACE_DIR / "projects"
+MASTER_DIR = WORKSPACE_DIR / "master_dataset"
+MASTER_IMAGES_DIR = MASTER_DIR / "images"
+MASTER_MASKS_DIR = MASTER_DIR / "masks"
+MASTER_METADATA_PATH = MASTER_DIR / "dataset.json"
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 APP_CLASS_NAMES = [
     "auto",
@@ -77,6 +81,103 @@ def list_projects():
         except json.JSONDecodeError:
             continue
     return projects
+
+
+def empty_master_dataset():
+    return {
+        "created_at": utc_now(),
+        "updated_at": utc_now(),
+        "class_names": APP_CLASS_NAMES,
+        "items": [],
+        "exports": [],
+    }
+
+
+def load_master_dataset():
+    if not MASTER_METADATA_PATH.exists():
+        return empty_master_dataset()
+
+    with MASTER_METADATA_PATH.open("r", encoding="utf-8") as file:
+        dataset = json.load(file)
+
+    dataset.setdefault("class_names", APP_CLASS_NAMES)
+    dataset.setdefault("items", [])
+    dataset.setdefault("exports", [])
+    return dataset
+
+
+def save_master_dataset(dataset):
+    MASTER_DIR.mkdir(parents=True, exist_ok=True)
+    dataset["updated_at"] = utc_now()
+    with MASTER_METADATA_PATH.open("w", encoding="utf-8") as file:
+        json.dump(dataset, file, indent=2)
+
+
+def master_summary():
+    dataset = load_master_dataset()
+    return {
+        "total": len(dataset["items"]),
+        "exports": dataset.get("exports", []),
+        "updated_at": dataset.get("updated_at"),
+    }
+
+
+def master_key(project_id, frame_id):
+    return f"{project_id}_{frame_id}"
+
+
+def remove_master_item(project_id, frame_id):
+    dataset = load_master_dataset()
+    key = master_key(project_id, frame_id)
+    old_count = len(dataset["items"])
+    dataset["items"] = [item for item in dataset["items"] if item["id"] != key]
+
+    if len(dataset["items"]) == old_count:
+        return False
+
+    save_master_dataset(dataset)
+    return True
+
+
+def upsert_master_item(project, frame):
+    if not frame.get("has_mask") or not frame.get("bbox") or not frame.get("polygon_normalized"):
+        raise ValueError("Only frames with a valid mask can be added to the master dataset.")
+
+    dataset = load_master_dataset()
+    key = master_key(project["id"], frame["id"])
+    image_name = f"{key}.jpg"
+    mask_name = f"{key}.png"
+    MASTER_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    MASTER_MASKS_DIR.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy2(project_dir(project["id"]) / "frames" / frame["image"], MASTER_IMAGES_DIR / image_name)
+    shutil.copy2(project_dir(project["id"]) / "masks" / frame["mask"], MASTER_MASKS_DIR / mask_name)
+
+    item = {
+        "id": key,
+        "source_project_id": project["id"],
+        "source_project_name": project["name"],
+        "source_frame_id": frame["id"],
+        "source_frame_index": frame["frame_index"],
+        "source_timestamp": frame["timestamp"],
+        "image": image_name,
+        "mask": mask_name,
+        "width": frame["width"],
+        "height": frame["height"],
+        "class_name": project["class_name"],
+        "class_names": project.get("class_names") or APP_CLASS_NAMES,
+        "bbox": frame["bbox"],
+        "polygon": frame["polygon"],
+        "polygon_normalized": frame["polygon_normalized"],
+        "mask_source": frame.get("mask_source", "auto"),
+        "added_at": utc_now(),
+    }
+
+    dataset["items"] = [existing for existing in dataset["items"] if existing["id"] != key]
+    dataset["items"].append(item)
+    dataset["items"].sort(key=lambda value: (value["source_project_id"], value["source_frame_index"], value["id"]))
+    save_master_dataset(dataset)
+    return item
 
 
 def normalize_points(points, width, height):
@@ -281,9 +382,9 @@ def process_video(project, sample_fps, min_area, max_area_ratio):
     save_project(project)
 
 
-def split_approved_frames(frames):
-    approved = [frame for frame in frames if frame["decision"] == "approved" and frame["has_mask"]]
-    approved.sort(key=lambda item: item["frame_index"])
+def split_dataset_items(items):
+    approved = list(items)
+    approved.sort(key=lambda item: (item.get("source_project_id", ""), item.get("source_frame_index", 0), item["id"]))
 
     if not approved:
         return {"train": [], "val": [], "test": []}
@@ -314,15 +415,12 @@ def write_yolo_label(path, class_id, values):
         file.write(str(class_id) + " " + " ".join(str(value) for value in values) + "\n")
 
 
-def export_dataset(project):
-    splits = split_approved_frames(project["frames"])
+def export_master_dataset():
+    dataset = load_master_dataset()
+    splits = split_dataset_items(dataset["items"])
     export_name = "yolo_dataset_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    export_dir = project_dir(project["id"]) / "exports" / export_name
-    source_images = project_dir(project["id"]) / "frames"
-    source_masks = project_dir(project["id"]) / "masks"
-    class_name = project["class_name"]
-    class_names = project.get("class_names") or APP_CLASS_NAMES
-    class_id = class_names.index(class_name) if class_name in class_names else 0
+    export_dir = MASTER_DIR / "exports" / export_name
+    class_names = dataset.get("class_names") or APP_CLASS_NAMES
 
     for dataset_type in ("detection", "segmentation"):
         for split_name in ("train", "val", "test"):
@@ -333,24 +431,26 @@ def export_dataset(project):
         (export_dir / "masks" / split_name).mkdir(parents=True, exist_ok=True)
 
     for split_name, frames in splits.items():
-        for frame in frames:
-            image_source = source_images / frame["image"]
-            mask_source = source_masks / frame["mask"]
-            label_name = Path(frame["image"]).with_suffix(".txt").name
+        for item in frames:
+            image_source = MASTER_IMAGES_DIR / item["image"]
+            mask_source = MASTER_MASKS_DIR / item["mask"]
+            label_name = Path(item["image"]).with_suffix(".txt").name
+            class_name = item["class_name"]
+            class_id = class_names.index(class_name) if class_name in class_names else 0
 
             for dataset_type in ("detection", "segmentation"):
-                shutil.copy2(image_source, export_dir / dataset_type / "images" / split_name / frame["image"])
+                shutil.copy2(image_source, export_dir / dataset_type / "images" / split_name / item["image"])
 
-            shutil.copy2(mask_source, export_dir / "masks" / split_name / frame["mask"])
+            shutil.copy2(mask_source, export_dir / "masks" / split_name / item["mask"])
             write_yolo_label(
                 export_dir / "detection" / "labels" / split_name / label_name,
                 class_id,
-                frame["bbox"]["normalized"],
+                item["bbox"]["normalized"],
             )
             write_yolo_label(
                 export_dir / "segmentation" / "labels" / split_name / label_name,
                 class_id,
-                frame["polygon_normalized"],
+                item["polygon_normalized"],
             )
 
     for dataset_type in ("detection", "segmentation"):
@@ -368,16 +468,15 @@ def export_dataset(project):
         "name": export_name,
         "created_at": utc_now(),
         "path": str(export_dir.resolve()),
-        "class_id": class_id,
-        "class_name": class_name,
+        "source": "master_dataset",
+        "total_items": len(dataset["items"]),
         "counts": {split_name: len(frames) for split_name, frames in splits.items()},
     }
     with (export_dir / "export_summary.json").open("w", encoding="utf-8") as file:
         json.dump(summary, file, indent=2)
 
-    project.setdefault("exports", []).append(summary)
-    project["updated_at"] = utc_now()
-    save_project(project)
+    dataset.setdefault("exports", []).append(summary)
+    save_master_dataset(dataset)
     return summary
 
 
@@ -434,7 +533,9 @@ def create_project():
 
 @app.route("/api/project/<project_id>")
 def project_api(project_id):
-    return jsonify(load_project(project_id))
+    project = load_project(project_id)
+    project["master_summary"] = master_summary()
+    return jsonify(project)
 
 
 @app.route("/api/project/<project_id>/frame/<frame_id>/decision", methods=["POST"])
@@ -447,9 +548,17 @@ def frame_decision(project_id, frame_id):
     for frame in project["frames"]:
         if frame["id"] == frame_id:
             frame["decision"] = decision
+            if decision == "approved":
+                try:
+                    upsert_master_item(project, frame)
+                except ValueError as error:
+                    return jsonify({"error": str(error)}), 400
+            else:
+                remove_master_item(project_id, frame_id)
+
             project["updated_at"] = utc_now()
             save_project(project)
-            return jsonify({"ok": True, "frame": frame})
+            return jsonify({"ok": True, "frame": frame, "master_summary": master_summary()})
 
     return jsonify({"error": "Frame not found"}), 404
 
@@ -476,9 +585,10 @@ def frame_mask(project_id, frame_id):
         frame["decision"] = "pending"
         frame["mask_source"] = "manual"
         write_mask(project_dir(project_id) / "masks" / frame["mask"], frame["polygon"], frame["width"], frame["height"])
+        remove_master_item(project_id, frame_id)
         project["updated_at"] = utc_now()
         save_project(project)
-        return jsonify({"ok": True, "frame": frame})
+        return jsonify({"ok": True, "frame": frame, "master_summary": master_summary()})
 
     return jsonify({"error": "Frame not found"}), 404
 
@@ -486,11 +596,14 @@ def frame_mask(project_id, frame_id):
 @app.route("/api/project/<project_id>/export", methods=["POST"])
 def export_api(project_id):
     project = load_project(project_id)
-    approved = [frame for frame in project["frames"] if frame["decision"] == "approved" and frame["has_mask"]]
-    if not approved:
-        return jsonify({"error": "Approve at least one frame with a generated mask before export."}), 400
+    for frame in project["frames"]:
+        if frame["decision"] == "approved" and frame["has_mask"]:
+            upsert_master_item(project, frame)
 
-    summary = export_dataset(project)
+    if not load_master_dataset()["items"]:
+        return jsonify({"error": "Approve at least one frame with a saved mask before export."}), 400
+
+    summary = export_master_dataset()
     return jsonify(summary)
 
 
@@ -507,4 +620,5 @@ def media_mask(project_id, filename):
 if __name__ == "__main__":
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    MASTER_DIR.mkdir(parents=True, exist_ok=True)
     app.run(host="127.0.0.1", port=5055, debug=True)

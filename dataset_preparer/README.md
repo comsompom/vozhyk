@@ -10,7 +10,8 @@ Standalone Flask application for preparing YOLO-ready `plane_drone` datasets fro
 - Review every candidate frame with the mask overlay.
 - Approve or reject frames.
 - Replace any automatic mask with a manually drawn polygon mask.
-- Export only approved frames into YOLO-ready detection and segmentation datasets.
+- Add approved frames into one persistent master dataset across multiple videos.
+- Export the full master dataset into YOLO-ready detection and segmentation datasets.
 - Preserve the iPhone app's current class order, where `plane_drone` is class ID `3`.
 
 ## Run
@@ -35,7 +36,13 @@ http://127.0.0.1:5055
 Exports are written under:
 
 ```text
-dataset_preparer/workspace/projects/<project_id>/exports/<export_name>/
+dataset_preparer/workspace/master_dataset/exports/<export_name>/
+```
+
+Approved source frames and masks are accumulated under:
+
+```text
+dataset_preparer/workspace/master_dataset/
 ```
 
 Each export contains:
@@ -47,3 +54,5 @@ Each export contains:
 - `data_segmentation.yaml`
 
 The automatic masks are proposals. Inspect them carefully before approving frames.
+
+Approving a frame adds or updates it in the master dataset immediately. Changing an approved frame back to pending/rejected, or replacing its mask manually, removes the stale copy until you approve it again.

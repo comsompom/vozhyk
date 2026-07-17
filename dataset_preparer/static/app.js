@@ -34,11 +34,13 @@ function updateStats() {
   const approved = frames.filter((frame) => frame.decision === "approved").length;
   const rejected = frames.filter((frame) => frame.decision === "rejected").length;
   const masked = frames.filter((frame) => frame.has_mask).length;
+  const masterTotal = project?.master_summary?.total || 0;
 
   document.getElementById("stat-total").textContent = total;
   document.getElementById("stat-approved").textContent = approved;
   document.getElementById("stat-rejected").textContent = rejected;
   document.getElementById("stat-masked").textContent = masked;
+  document.getElementById("stat-master").textContent = masterTotal;
 }
 
 function drawOverlay(frame) {
@@ -168,13 +170,15 @@ async function setDecision(decision) {
   });
 
   if (!response.ok) {
-    setStatus("Could not update frame decision.");
+    const payload = await response.json();
+    setStatus(payload.error || "Could not update frame decision.");
     return;
   }
 
   const payload = await response.json();
   frames[currentIndex] = payload.frame;
-  setStatus(`${frame.id} marked ${decision}.`);
+  if (payload.master_summary) project.master_summary = payload.master_summary;
+  setStatus(decision === "approved" ? `${frame.id} added to the master dataset.` : `${frame.id} marked ${decision}.`);
 
   if (decision !== "pending" && currentIndex < frames.length - 1) {
     currentIndex += 1;
@@ -252,6 +256,7 @@ async function saveManualMask() {
   }
 
   frames[currentIndex] = payload.frame;
+  if (payload.master_summary) project.master_summary = payload.master_summary;
   drawMode = false;
   manualPolygon = [];
   setStatus(`${frame.id} manual mask saved. Approve it when the mask is correct.`);
@@ -264,7 +269,7 @@ async function exportDataset() {
     return;
   }
 
-  setStatus("Building YOLO dataset from approved frames...");
+  setStatus("Building YOLO dataset from all approved frames in the master dataset...");
   const response = await fetch(`/api/project/${projectId}/export`, { method: "POST" });
   const payload = await response.json();
 
@@ -273,7 +278,11 @@ async function exportDataset() {
     return;
   }
 
-  setStatus(`Export ready: ${payload.path} | train ${payload.counts.train}, val ${payload.counts.val}, test ${payload.counts.test}`);
+  if (payload.total_items !== undefined) {
+    project.master_summary = { ...(project.master_summary || {}), total: payload.total_items };
+  }
+  updateStats();
+  setStatus(`Export ready: ${payload.path} | total ${payload.total_items}, train ${payload.counts.train}, val ${payload.counts.val}, test ${payload.counts.test}`);
 }
 
 function bindControls() {
