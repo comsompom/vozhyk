@@ -95,4 +95,61 @@ iphone_detector/
 
 ## Next Steps (Part 2)
 
-This app is the **eyes & brain** on the iPhone. The next integration step is sending targeting coordinates to the STM32 rover over **Bluetooth BLE** (`T:-120,45\n` format from `solution.md`).
+This app is the **eyes & brain** on the iPhone. Part 2 will connect the iPhone app to a **DOIT ESP32 DEVKIT V1** over Wi-Fi instead of BLE.
+
+The planned hardware concept is:
+
+```text
+iPhone Vozhyk app
+  |
+  | Wi-Fi command: scan / target position
+  v
+ESP32 DOIT DEVKIT V1
+  |
+  | Servo PWM
+  v
+iPhone pan/tilt platform
+  |
+  | Camera searches the sky
+  v
+Drone detected by iPhone app
+  |
+  | Wi-Fi command: detected drone coordinates
+  v
+ESP32
+  |
+  | Servo PWM
+  v
+Positioning ray module points toward the detected drone
+```
+
+The ESP32 will create or join a Wi-Fi network and expose a small control API. The iPhone app will send commands such as:
+
+```text
+POST /scan/start
+POST /scan/stop
+POST /iphone/position
+POST /ray/target
+```
+
+When the iPhone detects a `plane_drone`, it will send normalized target coordinates to the ESP32:
+
+```json
+{
+  "cx": 0.62,
+  "cy": 0.31,
+  "confidence": 0.84,
+  "zoom": 3.0,
+  "label": "plane_drone"
+}
+```
+
+The ESP32 will convert those coordinates into servo movement. One servo system can slowly rotate the iPhone so the camera scans outside, and another servo system can point the dedicated positioning ray toward the detected drone location.
+
+Important hardware notes:
+
+- Use a separate 5V power supply for servos.
+- Connect ESP32 GND and servo power GND together.
+- Do not power servos directly from the ESP32 3.3V pin.
+- Add smoothing/dead-zone logic so the ray does not shake when detections move slightly.
+- Auto-zoom on the iPhone will reset while the platform is moving and can zoom in again when the platform becomes stable.
