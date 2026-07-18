@@ -21,11 +21,24 @@ feedback id: 019f6a59-5a57-74a2-98dd-8c77f5f37a1a
 
 iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visual drone detection and the phone's Bluetooth/Wi-Fi radios to spot drone-like RF signatures.
 
+The app runs live on the iPhone and automatically analyzes the camera stream. It detects common visible objects such as autos, humans, trucks, buses, motorcycles, birds, and planes with the bundled YOLO model, while a separate custom Core ML model detects `plane_drone` objects from our own fine-tuned training data. This dual-model setup keeps normal object recognition available while improving detection of the drone/plane target class.
+
+For long-distance objects, the camera uses automatic zoom assistance. When the user holds the iPhone stable for a short moment, the app gradually zooms the real camera feed up to 5x so small distant flying objects become easier for the model to inspect. If the phone moves or turns again, zoom resets back to the default view.
+
+The app also performs radio-side checks that are available on iPhone. It scans Bluetooth Low Energy signals and checks Wi-Fi SSID patterns where iOS permits access, looking for known drone/controller signatures such as DJI, Parrot, FPV, and similar radio names. The visual and radio signals are combined into the on-screen threat state.
+
+## Presentation Video
+
+https://youtu.be/UbPek3CEMGw
+
 ## Features
 
 - **Live camera feed** with bounding-box overlays
-- **AI detection** via Core ML YOLO-World, restricted to the app's object list
-- **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar devices
+- **General object detection** for autos, humans, trucks, buses, motorcycles, birds, and planes
+- **Fine-tuned plane-drone detection** using our custom Core ML model trained from reviewed video data
+- **Dual-model pipeline**: custom `plane_drone` model plus preserved YOLO general detector
+- **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
+- **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar known drone/controller signals
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
 
