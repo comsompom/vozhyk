@@ -109,10 +109,10 @@
                 <button class="approve-button" id="approve-frame" type="button" title="Accept this frame and add or update it in the shared master dataset.">Approve</button>
                 <button class="reject-button" id="reject-frame" type="button" title="Reject this frame and remove it from the master dataset if it was previously approved.">Remove</button>
                 <button class="ghost-button" id="pending-frame" type="button" title="Keep this frame undecided and remove any approved copy from the master dataset.">Mark Pending</button>
-                <button class="export-button" id="export-dataset" type="button" title="Export all approved frames accumulated from all videos into YOLO train/val/test folders.">Build Master Dataset</button>
+                <button class="export-button" id="export-dataset" type="button" title="Export all approved frames accumulated from all videos and previous Flask sessions into YOLO train/val/test folders.">Build Master Dataset</button>
                 <button class="cleanup-button" id="clear-sources" type="button" disabled title="Remove uploaded videos and per-project extracted frames after the master dataset has been built.">Clear Source Projects</button>
               </div>
-              <button class="info-dot action-info" type="button" aria-label="Review action help" data-help="Approve saves the current frame into the master dataset. Remove excludes it. Draw Mask lets you replace the mask before approval. Build Master Dataset exports all approved frames from every video. Clear Source Projects removes upload/project working files but keeps the master dataset.">i</button>
+              <button class="info-dot action-info" type="button" aria-label="Review action help" data-help="Approve saves the current frame into the master dataset. Remove excludes it. Draw Mask lets you replace the mask before approval. Build Master Dataset exports all approved frames from every video and previous Flask session. Clear Source Projects removes upload/project working files but keeps the master dataset.">i</button>
               <p class="status-line" id="status-line"></p>
             </section>
 
@@ -123,7 +123,7 @@
             <div>
               <p class="eyebrow">Start pipeline</p>
               <h2>Upload a drone video to generate reviewable frame masks.</h2>
-              <p>The app will extract frames, create automatic mask proposals, and add approved frames into one shared training dataset across videos.</p>
+              <p>The app will extract frames, create automatic mask proposals, and append approved frames into the persistent master dataset across videos and Flask sessions.</p>
             </div>
           </section>
         {% endif %}

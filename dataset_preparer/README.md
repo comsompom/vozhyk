@@ -11,7 +11,7 @@ Standalone Flask application for preparing YOLO-ready `plane_drone` datasets fro
 - Zoom the review image for precise manual mask drawing.
 - Approve or reject frames.
 - Replace any automatic mask with a manually drawn polygon mask.
-- Add approved frames into one persistent master dataset across multiple videos.
+- Add approved frames into one persistent master dataset across multiple videos and Flask sessions.
 - Export the full master dataset into YOLO-ready detection and segmentation datasets.
 - Clear uploaded videos and per-project frame sources after building the master dataset.
 - Preserve the iPhone app's current class order, where `plane_drone` is class ID `3`.
@@ -55,6 +55,8 @@ Approved source frames and masks are accumulated under:
 dataset_preparer/workspace/master_dataset/
 ```
 
+The master dataset is append-only by default. Stopping and starting Flask does not reset it. Processing a new video in a later session and pressing `Build Master Dataset` extends/exports the already accumulated master dataset instead of deleting previous approved frames.
+
 Each export contains:
 
 - `detection/` with YOLO bounding-box labels.
@@ -69,4 +71,4 @@ Approving a frame adds or updates it in the master dataset immediately. Changing
 
 Zoom affects only the browser review view. Manual mask points are converted back to original image coordinates before saving, so exported masks and YOLO labels stay aligned with the normal image size.
 
-After `Build Master Dataset` succeeds, `Clear Source Projects` removes `workspace/projects` and `workspace/uploads` while keeping `workspace/master_dataset`.
+After `Build Master Dataset` succeeds, `Clear Source Projects` removes `workspace/projects` and `workspace/uploads` while keeping `workspace/master_dataset`. Only manually deleting `workspace/master_dataset` starts a fresh master dataset.

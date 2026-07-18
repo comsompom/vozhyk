@@ -113,6 +113,12 @@ def save_master_dataset(dataset):
         json.dump(dataset, file, indent=2)
 
 
+def ensure_workspace_dirs():
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    MASTER_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def master_summary():
     dataset = load_master_dataset()
     return {
@@ -481,6 +487,8 @@ def export_master_dataset():
 
 
 def clear_source_projects():
+    # Intentionally preserve MASTER_DIR. A new Flask session should keep extending
+    # the accumulated reviewed dataset until the user manually removes it.
     removed_projects = PROJECTS_DIR.exists()
     removed_uploads = UPLOADS_DIR.exists()
     shutil.rmtree(PROJECTS_DIR, ignore_errors=True)
@@ -637,7 +645,5 @@ def media_mask(project_id, filename):
 
 
 if __name__ == "__main__":
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
-    MASTER_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_workspace_dirs()
     app.run(host="127.0.0.1", port=5055, debug=True)
