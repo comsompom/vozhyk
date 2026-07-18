@@ -31,6 +31,10 @@ The app also performs radio-side checks that are available on iPhone. It scans B
 
 https://youtu.be/UbPek3CEMGw
 
+## About Project
+
+Read the full hackathon project description in [about.md](about.md).
+
 ## Features
 
 - **Live camera feed** with bounding-box overlays
@@ -125,3 +129,5 @@ iphone_detector/
 ## Next Steps (Part 2)
 
 This app is the **eyes & brain** on the iPhone. The next integration step is sending targeting coordinates to the STM32 rover over **Bluetooth BLE** (`T:-120,45\n` format from `solution.md`).
+
+The planned hardware extension is to mount the iPhone on a mobile system, use the camera model to detect a drone in the air, then send the detected target position over BLE to an STM32 module. The STM32 will control servos that point a dedicated positioning ray toward the detected drone location.
