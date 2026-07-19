@@ -218,8 +218,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 # iPhone detector local export artifacts
+iphone_detector/DroneDetector/Models/DroneDetector.mlpackage/
+iphone_detector/DroneDetector/Models/model_backups/
 iphone_detector/.model_export/
 iphone_detector/.venv/
 iphone_detector/*.pt
 iphone_detector/yolov8n.pt
-

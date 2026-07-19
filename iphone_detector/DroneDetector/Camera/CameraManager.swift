@@ -9,6 +9,7 @@ final class CameraManager: NSObject, ObservableObject {
     @Published private(set) var authorizationStatus: AVAuthorizationStatus = .notDetermined
     @Published private(set) var errorMessage: String?
     @Published private(set) var currentZoomFactor: CGFloat = 1.0
+    @Published private(set) var horizontalFieldOfViewDegrees: CGFloat = 60.0
 
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.vozhyk.drone-detector.camera")
@@ -122,6 +123,7 @@ final class CameraManager: NSObject, ObservableObject {
 
         session.addInput(input)
         cameraDevice = camera
+        let fieldOfView = camera.activeFormat.videoFieldOfView
 
         do {
             try camera.lockForConfiguration()
@@ -137,6 +139,10 @@ final class CameraManager: NSObject, ObservableObject {
             camera.unlockForConfiguration()
         } catch {
             // Continue with defaults if lock fails.
+        }
+
+        Task { @MainActor in
+            self.horizontalFieldOfViewDegrees = CGFloat(fieldOfView)
         }
 
         videoOutput.alwaysDiscardsLateVideoFrames = true

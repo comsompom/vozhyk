@@ -62,12 +62,14 @@ enum BorderColorOption: String, CaseIterable, Codable, Identifiable, Equatable, 
 private struct DetectionSettingsPayload: Codable {
     let enabled: [String: Bool]
     let borderColors: [String: String]
+    let showDistanceEstimates: Bool?
 }
 
 @MainActor
 final class DetectionSettingsStore: ObservableObject {
     @Published var enabledByType: [DetectableObjectType: Bool]
     @Published var borderColorByType: [DetectableObjectType: BorderColorOption]
+    @Published var showDistanceEstimates: Bool
 
     private let defaults = UserDefaults.standard
     private let storageKey = "vozhyk.detection.settings.v1"
@@ -94,10 +96,12 @@ final class DetectionSettingsStore: ObservableObject {
 
             self.enabledByType = mergedEnabled
             self.borderColorByType = mergedColors
+            self.showDistanceEstimates = payload.showDistanceEstimates ?? false
             migrateDroneDefaultColorsIfNeeded()
         } else {
             self.enabledByType = defaultEnabled
             self.borderColorByType = defaultColors
+            self.showDistanceEstimates = false
         }
     }
 
@@ -123,10 +127,16 @@ final class DetectionSettingsStore: ObservableObject {
         save()
     }
 
+    func setShowDistanceEstimates(_ enabled: Bool) {
+        showDistanceEstimates = enabled
+        save()
+    }
+
     private func save() {
         let payload = DetectionSettingsPayload(
             enabled: Dictionary(uniqueKeysWithValues: enabledByType.map { ($0.key.rawValue, $0.value) }),
-            borderColors: Dictionary(uniqueKeysWithValues: borderColorByType.map { ($0.key.rawValue, $0.value.rawValue) })
+            borderColors: Dictionary(uniqueKeysWithValues: borderColorByType.map { ($0.key.rawValue, $0.value.rawValue) }),
+            showDistanceEstimates: showDistanceEstimates
         )
 
         if let data = try? JSONEncoder().encode(payload) {

@@ -4,29 +4,61 @@ struct DetectionOverlayView: View {
     let detections: [VisionDetection]
     /// Aspect ratio of the camera buffer that Vision used for these detections.
     let videoAspectRatio: CGFloat
+    let cameraHorizontalFieldOfViewDegrees: CGFloat
+    let cameraZoomFactor: CGFloat
     @ObservedObject var settings: DetectionSettingsStore
 
     var body: some View {
         GeometryReader { geometry in
-            ForEach(detections) { detection in
-                let rect = convert(detection.boundingBox, in: geometry.size)
-                ZStack(alignment: .topLeading) {
-                    let borderColor = settings.borderColor(for: detection.objectType)
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(borderColor, lineWidth: 2)
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
+            ZStack(alignment: .topTrailing) {
+                ForEach(detections) { detection in
+                    let rect = convert(detection.boundingBox, in: geometry.size)
+                    ZStack(alignment: .topLeading) {
+                        let borderColor = settings.borderColor(for: detection.objectType)
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(borderColor, lineWidth: 2)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
 
-                    Text("\(detection.label) \(Int(detection.confidence * 100))%")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(borderColor.opacity(0.85))
-                        .foregroundStyle(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                        .position(x: rect.midX, y: max(12, rect.minY - 10))
+                        Text("\(detection.label) \(Int(detection.confidence * 100))%")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(borderColor.opacity(0.85))
+                            .foregroundStyle(.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .position(x: rect.midX, y: max(12, rect.minY - 10))
+                    }
+                }
+
+                if settings.showDistanceEstimates,
+                   let estimate = DistanceEstimator.nearestEstimate(
+                    in: detections,
+                    frameAspectRatio: videoAspectRatio,
+                    horizontalFieldOfViewDegrees: cameraHorizontalFieldOfViewDegrees,
+                    zoomFactor: cameraZoomFactor
+                   ) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(estimate.objectTitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(estimate.formattedDistance)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.58))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.white.opacity(0.35), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.top, 56)
+                    .padding(.trailing, 12)
                 }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .allowsHitTesting(false)
     }
@@ -49,6 +81,132 @@ struct DetectionOverlayView: View {
             width: box.width * renderedWidth,
             height: box.height * renderedHeight
         )
+    }
+}
+
+private struct DistanceEstimate {
+    let objectTitle: String
+    let distanceMeters: CGFloat
+
+    var formattedDistance: String {
+        if distanceMeters >= 100 {
+            return String(format: "~%.0f m", distanceMeters)
+        }
+        if distanceMeters >= 10 {
+            return String(format: "~%.1f m", distanceMeters)
+        }
+        return String(format: "~%.2f m", distanceMeters)
+    }
+}
+
+private enum DistanceEstimator {
+    static func nearestEstimate(
+        in detections: [VisionDetection],
+        frameAspectRatio: CGFloat,
+        horizontalFieldOfViewDegrees: CGFloat,
+        zoomFactor: CGFloat
+    ) -> DistanceEstimate? {
+        let axisFOV = effectiveAxisFieldOfViews(
+            frameAspectRatio: frameAspectRatio,
+            horizontalFieldOfViewDegrees: horizontalFieldOfViewDegrees,
+            zoomFactor: zoomFactor
+        )
+
+        return detections
+            .compactMap { estimate(for: $0, horizontalFOV: axisFOV.horizontal, verticalFOV: axisFOV.vertical) }
+            .min { $0.distanceMeters < $1.distanceMeters }
+    }
+
+    private static func estimate(
+        for detection: VisionDetection,
+        horizontalFOV: CGFloat,
+        verticalFOV: CGFloat
+    ) -> DistanceEstimate? {
+        switch detection.objectType {
+        case .human:
+            return distance(
+                title: detection.objectType.title,
+                realMeters: 1.75,
+                normalizedSpan: detection.boundingBox.height,
+                fieldOfViewRadians: verticalFOV
+            )
+        case .auto:
+            let majorSpan = max(detection.boundingBox.width, detection.boundingBox.height)
+            let majorFOV = detection.boundingBox.width >= detection.boundingBox.height ? horizontalFOV : verticalFOV
+            return distance(
+                title: detection.objectType.title,
+                realMeters: (2.5 + 3.3) / 2,
+                normalizedSpan: majorSpan,
+                fieldOfViewRadians: majorFOV
+            )
+        case .planeDrone:
+            let wingspan = distanceMeters(
+                realMeters: 2.7,
+                normalizedSpan: detection.boundingBox.width,
+                fieldOfViewRadians: horizontalFOV
+            )
+            let fuselage = distanceMeters(
+                realMeters: 2.5,
+                normalizedSpan: detection.boundingBox.height,
+                fieldOfViewRadians: verticalFOV
+            )
+            let values = [wingspan, fuselage].compactMap { $0 }
+            guard !values.isEmpty else { return nil }
+            return DistanceEstimate(
+                objectTitle: detection.objectType.title,
+                distanceMeters: values.reduce(0, +) / CGFloat(values.count)
+            )
+        case .plane, .drone, .bird, .bus, .truck, .motorcycle:
+            return nil
+        }
+    }
+
+    private static func distance(
+        title: String,
+        realMeters: CGFloat,
+        normalizedSpan: CGFloat,
+        fieldOfViewRadians: CGFloat
+    ) -> DistanceEstimate? {
+        guard let meters = distanceMeters(
+            realMeters: realMeters,
+            normalizedSpan: normalizedSpan,
+            fieldOfViewRadians: fieldOfViewRadians
+        ) else { return nil }
+
+        return DistanceEstimate(objectTitle: title, distanceMeters: meters)
+    }
+
+    private static func distanceMeters(
+        realMeters: CGFloat,
+        normalizedSpan: CGFloat,
+        fieldOfViewRadians: CGFloat
+    ) -> CGFloat? {
+        guard normalizedSpan > 0.001, fieldOfViewRadians > 0 else { return nil }
+        let focalLengthInNormalizedPixels = 0.5 / tan(fieldOfViewRadians / 2)
+        let meters = focalLengthInNormalizedPixels * realMeters / normalizedSpan
+        guard meters.isFinite, meters > 0 else { return nil }
+        return meters
+    }
+
+    private static func effectiveAxisFieldOfViews(
+        frameAspectRatio: CGFloat,
+        horizontalFieldOfViewDegrees: CGFloat,
+        zoomFactor: CGFloat
+    ) -> (horizontal: CGFloat, vertical: CGFloat) {
+        let safeAspectRatio = max(frameAspectRatio, 0.01)
+        let baseHorizontal = horizontalFieldOfViewDegrees * .pi / 180
+        let safeZoom = max(zoomFactor, 1.0)
+        let effectiveBaseHorizontal = 2 * atan(tan(baseHorizontal / 2) / safeZoom)
+
+        if safeAspectRatio < 1 {
+            let vertical = effectiveBaseHorizontal
+            let horizontal = 2 * atan(tan(vertical / 2) * safeAspectRatio)
+            return (horizontal, vertical)
+        }
+
+        let horizontal = effectiveBaseHorizontal
+        let vertical = 2 * atan(tan(horizontal / 2) / safeAspectRatio)
+        return (horizontal, vertical)
     }
 }
 

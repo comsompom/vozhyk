@@ -39,6 +39,13 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Distance") {
+                Toggle("Show distance estimates", isOn: Binding(
+                    get: { settings.showDistanceEstimates },
+                    set: { settings.setShowDistanceEstimates($0) }
+                ))
+            }
+
             Section("Border colors") {
                 ForEach(DetectableObjectType.allCases) { type in
                     HStack {
