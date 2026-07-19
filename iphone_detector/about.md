@@ -19,6 +19,8 @@ This lets Vozhyk keep useful general scene awareness while improving detection o
 
 To help with long-distance detection, Vozhyk also includes automatic camera zoom. When the user holds the iPhone stable for a short moment, the app gradually zooms the real camera feed up to 5x, making small distant flying objects easier for the model to inspect. If the phone moves or turns again, zoom resets back to the default view.
 
+Vozhyk can optionally estimate distance to detected humans, autos, and plane-drone targets. The app uses preset real-world object sizes and the current camera zoom factor to estimate the nearest supported detected object, then shows the result in the top-right corner of the live camera view.
+
 At the same time, the application scans Bluetooth Low Energy devices and checks for known drone-related Wi-Fi network names that iOS makes available. By combining visual and radio observations, Vozhyk estimates the likelihood that a drone is nearby and displays a clear threat indicator:
 
 - CLEAR
@@ -41,6 +43,7 @@ Major technologies include:
 - CoreBluetooth for BLE scanning
 - Network framework for Wi-Fi identification where supported by iOS
 - CoreMotion to detect when the iPhone is stable and trigger automatic zoom
+- AVFoundation camera field-of-view and live zoom data for distance estimation
 - Flask and OpenCV for the dataset preparation workflow
 - OpenAI Codex to accelerate development, generate code, troubleshoot issues, fine-tune workflows, and iterate on implementation throughout the project
 
@@ -70,6 +73,7 @@ Highlights include:
 - On-device AI inference with Core ML
 - Dual-model detection: general YOLO model plus custom fine-tuned `plane_drone` model
 - Automatic camera zoom for long-distance object inspection
+- Optional zoom-adjusted distance estimates for supported detected targets
 - Bluetooth-based drone/controller signature detection
 - Wi-Fi network identification where iOS allows it
 - A simple threat dashboard designed for quick interpretation
@@ -101,10 +105,10 @@ Our roadmap includes:
 - Expanding support for additional drone manufacturers and communication protocols.
 - Reducing false positives in complex environments.
 - Improving the automatic zoom behavior based on real field testing.
-- Creating an iPhone BLE connection to an STM32 board.
-- Sending detected drone position/target data from the iPhone to the STM32 module.
-- Using the STM32 with servos to control an external positioning ray toward the detected drone location.
-- Mounting the iPhone on a mobile system where the phone acts as the visual "eyes" and the STM32-controlled hardware responds when a drone is detected in the air.
+- Creating an iPhone Wi-Fi connection to a DOIT ESP32 DEVKIT V1.
+- Sending detected drone position, confidence, zoom, and target data from the iPhone to the ESP32.
+- Using the ESP32 with servos to control an external positioning ray toward the detected drone location.
+- Mounting the iPhone on a mobile system where the phone acts as the visual "eyes" and the ESP32-controlled hardware responds when a drone is detected in the air.
 - Adding offline event logging and optional location-based incident history.
 - Integrating with external RF sensors for broader spectrum coverage where supported.
 

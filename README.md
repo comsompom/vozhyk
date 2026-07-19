@@ -21,6 +21,8 @@ iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visua
 
 - **Live camera feed** with bounding-box overlays
 - **AI detection** via Core ML YOLOv8n (optional) + motion heuristics fallback
+- **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
+- **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar devices
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED

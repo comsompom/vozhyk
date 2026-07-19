@@ -25,6 +25,8 @@ The app runs live on the iPhone and automatically analyzes the camera stream. It
 
 For long-distance objects, the camera uses automatic zoom assistance. When the user holds the iPhone stable for a short moment, the app gradually zooms the real camera feed up to 5x so small distant flying objects become easier for the model to inspect. If the phone moves or turns again, zoom resets back to the default view.
 
+The app can also show an estimated distance for supported detected objects. This is controlled from Settings and applies only to `human`, `auto`, and `plane_drone` detections, using preset real-world sizes. When several supported objects are visible, the top-right distance badge shows the nearest estimated object. The estimate is adjusted using the camera's current real zoom factor, including automatic zoom ramps.
+
 The app also performs radio-side checks that are available on iPhone. It scans Bluetooth Low Energy signals and checks Wi-Fi SSID patterns where iOS permits access, looking for known drone/controller signatures such as DJI, Parrot, FPV, and similar radio names. The visual and radio signals are combined into the on-screen threat state.
 
 ## Presentation Video
@@ -42,6 +44,7 @@ Read the full hackathon project description in [about.md](about.md).
 - **Fine-tuned plane-drone detection** using our custom Core ML model trained from reviewed video data
 - **Dual-model pipeline**: custom `plane_drone` model plus preserved YOLO general detector
 - **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
+- **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar known drone/controller signals
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
@@ -128,6 +131,6 @@ iphone_detector/
 
 ## Next Steps (Part 2)
 
-This app is the **eyes & brain** on the iPhone. The next integration step is sending targeting coordinates to the STM32 rover over **Bluetooth BLE** (`T:-120,45\n` format from `solution.md`).
+This app is the **eyes & brain** on the iPhone. The next integration step is sending targeting coordinates to a **DOIT ESP32 DEVKIT V1** over Wi-Fi.
 
-The planned hardware extension is to mount the iPhone on a mobile system, use the camera model to detect a drone in the air, then send the detected target position over BLE to an STM32 module. The STM32 will control servos that point a dedicated positioning ray toward the detected drone location.
+The planned hardware extension is to mount the iPhone on a mobile system, use the camera model to detect a drone in the air, then send the detected target position, confidence, and zoom level over Wi-Fi to the ESP32. The ESP32 will control servos that rotate the iPhone scanning platform and point a dedicated positioning ray toward the detected drone location.
