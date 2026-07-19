@@ -23,10 +23,11 @@ final class CameraManager: NSObject, ObservableObject {
     }()
 
     private var isConfigured = false
-    private var cameraDevice: AVCaptureDevice?
+    nonisolated(unsafe) private var cameraDevice: AVCaptureDevice?
     private var stableSince: Date?
     private var lastZoomStepAt = Date.distantPast
     private var targetZoomFactor: CGFloat = 1.0
+    nonisolated(unsafe) private var lastPublishedZoomFactor: CGFloat = 1.0
     private var smoothedRotationRate = 0.0
 
     private let stableDelay: TimeInterval = 1.5
@@ -259,11 +260,23 @@ final class CameraManager: NSObject, ObservableObject {
             targetZoomFactor = nextZoom
             Task { @MainActor in
                 self.currentZoomFactor = nextZoom
+                self.lastPublishedZoomFactor = nextZoom
             }
         } catch {
             Task { @MainActor in
                 self.errorMessage = "Unable to change camera zoom"
             }
+        }
+    }
+
+    nonisolated private func publishActualZoomFactorIfNeeded() {
+        guard let camera = cameraDevice else { return }
+        let actualZoom = camera.videoZoomFactor
+        guard abs(actualZoom - lastPublishedZoomFactor) >= 0.03 else { return }
+
+        lastPublishedZoomFactor = actualZoom
+        Task { @MainActor in
+            self.currentZoomFactor = actualZoom
         }
     }
 }
@@ -274,6 +287,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        publishActualZoomFactorIfNeeded()
         frameHandler?(sampleBuffer)
     }
 }
