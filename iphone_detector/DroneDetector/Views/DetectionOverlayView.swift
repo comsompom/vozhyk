@@ -31,9 +31,9 @@ struct DetectionOverlayView: View {
                     }
                 }
 
-                if settings.showDistanceEstimates,
-                   let estimate = DistanceEstimator.nearestEstimate(
+                if let estimate = DistanceEstimator.nearestEstimate(
                     in: detections,
+                    enabledTypes: settings.distanceEnabledTypes,
                     frameAspectRatio: videoAspectRatio,
                     horizontalFieldOfViewDegrees: cameraHorizontalFieldOfViewDegrees,
                     zoomFactor: cameraZoomFactor
@@ -102,10 +102,13 @@ private struct DistanceEstimate {
 private enum DistanceEstimator {
     static func nearestEstimate(
         in detections: [VisionDetection],
+        enabledTypes: Set<DetectableObjectType>,
         frameAspectRatio: CGFloat,
         horizontalFieldOfViewDegrees: CGFloat,
         zoomFactor: CGFloat
     ) -> DistanceEstimate? {
+        guard !enabledTypes.isEmpty else { return nil }
+
         let axisFOV = effectiveAxisFieldOfViews(
             frameAspectRatio: frameAspectRatio,
             horizontalFieldOfViewDegrees: horizontalFieldOfViewDegrees,
@@ -113,6 +116,7 @@ private enum DistanceEstimator {
         )
 
         return detections
+            .filter { enabledTypes.contains($0.objectType) }
             .compactMap { estimate(for: $0, horizontalFOV: axisFOV.horizontal, verticalFOV: axisFOV.vertical) }
             .min { $0.distanceMeters < $1.distanceMeters }
     }

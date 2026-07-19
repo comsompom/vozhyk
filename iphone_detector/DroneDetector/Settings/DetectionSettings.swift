@@ -63,6 +63,7 @@ private struct DetectionSettingsPayload: Codable {
     let enabled: [String: Bool]
     let borderColors: [String: String]
     let showDistanceEstimates: Bool?
+    let distanceEnabled: [String: Bool]?
 }
 
 @MainActor
@@ -70,6 +71,7 @@ final class DetectionSettingsStore: ObservableObject {
     @Published var enabledByType: [DetectableObjectType: Bool]
     @Published var borderColorByType: [DetectableObjectType: BorderColorOption]
     @Published var showDistanceEstimates: Bool
+    @Published var distanceEnabledByType: [DetectableObjectType: Bool]
 
     private let defaults = UserDefaults.standard
     private let storageKey = "vozhyk.detection.settings.v1"
@@ -78,11 +80,13 @@ final class DetectionSettingsStore: ObservableObject {
     init() {
         let defaultEnabled = Dictionary(uniqueKeysWithValues: DetectableObjectType.allCases.map { ($0, true) })
         let defaultColors = Dictionary(uniqueKeysWithValues: DetectableObjectType.allCases.map { ($0, $0.defaultBorderColor) })
+        let defaultDistanceEnabled = Dictionary(uniqueKeysWithValues: Self.distanceObjectTypes.map { ($0, false) })
 
         if let data = defaults.data(forKey: storageKey),
            let payload = try? JSONDecoder().decode(DetectionSettingsPayload.self, from: data) {
             var mergedEnabled = defaultEnabled
             var mergedColors = defaultColors
+            var mergedDistanceEnabled = defaultDistanceEnabled
 
             for type in DetectableObjectType.allCases {
                 if let value = payload.enabled[type.rawValue] {
@@ -94,19 +98,39 @@ final class DetectionSettingsStore: ObservableObject {
                 }
             }
 
+            if let distanceEnabled = payload.distanceEnabled {
+                for type in Self.distanceObjectTypes {
+                    if let value = distanceEnabled[type.rawValue] {
+                        mergedDistanceEnabled[type] = value
+                    }
+                }
+            } else if payload.showDistanceEstimates == true {
+                for type in Self.distanceObjectTypes {
+                    mergedDistanceEnabled[type] = true
+                }
+            }
+
             self.enabledByType = mergedEnabled
             self.borderColorByType = mergedColors
-            self.showDistanceEstimates = payload.showDistanceEstimates ?? false
+            self.distanceEnabledByType = mergedDistanceEnabled
+            self.showDistanceEstimates = mergedDistanceEnabled.contains { $0.value }
             migrateDroneDefaultColorsIfNeeded()
         } else {
             self.enabledByType = defaultEnabled
             self.borderColorByType = defaultColors
+            self.distanceEnabledByType = defaultDistanceEnabled
             self.showDistanceEstimates = false
         }
     }
 
+    static let distanceObjectTypes: [DetectableObjectType] = [.auto, .human, .planeDrone]
+
     var enabledTypes: Set<DetectableObjectType> {
         Set(enabledByType.compactMap { $0.value ? $0.key : nil })
+    }
+
+    var distanceEnabledTypes: Set<DetectableObjectType> {
+        Set(distanceEnabledByType.compactMap { $0.value ? $0.key : nil })
     }
 
     func isEnabled(_ type: DetectableObjectType) -> Bool {
@@ -115,6 +139,10 @@ final class DetectionSettingsStore: ObservableObject {
 
     func borderColor(for type: DetectableObjectType) -> Color {
         (borderColorByType[type] ?? type.defaultBorderColor).color
+    }
+
+    func isDistanceEnabled(_ type: DetectableObjectType) -> Bool {
+        distanceEnabledByType[type] ?? false
     }
 
     func setEnabled(_ enabled: Bool, for type: DetectableObjectType) {
@@ -129,6 +157,16 @@ final class DetectionSettingsStore: ObservableObject {
 
     func setShowDistanceEstimates(_ enabled: Bool) {
         showDistanceEstimates = enabled
+        for type in Self.distanceObjectTypes {
+            distanceEnabledByType[type] = enabled
+        }
+        save()
+    }
+
+    func setDistanceEnabled(_ enabled: Bool, for type: DetectableObjectType) {
+        guard Self.distanceObjectTypes.contains(type) else { return }
+        distanceEnabledByType[type] = enabled
+        showDistanceEstimates = distanceEnabledByType.contains { $0.value }
         save()
     }
 
@@ -136,7 +174,8 @@ final class DetectionSettingsStore: ObservableObject {
         let payload = DetectionSettingsPayload(
             enabled: Dictionary(uniqueKeysWithValues: enabledByType.map { ($0.key.rawValue, $0.value) }),
             borderColors: Dictionary(uniqueKeysWithValues: borderColorByType.map { ($0.key.rawValue, $0.value.rawValue) }),
-            showDistanceEstimates: showDistanceEstimates
+            showDistanceEstimates: showDistanceEstimates,
+            distanceEnabled: Dictionary(uniqueKeysWithValues: distanceEnabledByType.map { ($0.key.rawValue, $0.value) })
         )
 
         if let data = try? JSONEncoder().encode(payload) {

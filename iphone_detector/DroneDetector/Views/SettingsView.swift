@@ -40,10 +40,12 @@ struct SettingsView: View {
             }
 
             Section("Distance") {
-                Toggle("Show distance estimates", isOn: Binding(
-                    get: { settings.showDistanceEstimates },
-                    set: { settings.setShowDistanceEstimates($0) }
-                ))
+                ForEach(DetectionSettingsStore.distanceObjectTypes) { type in
+                    Toggle(type.title, isOn: Binding(
+                        get: { settings.isDistanceEnabled(type) },
+                        set: { settings.setDistanceEnabled($0, for: type) }
+                    ))
+                }
             }
 
             Section("Border colors") {
