@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: DetectionSettingsStore
+    @ObservedObject var trackLogger: ObjectTrackLogger
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -10,6 +11,11 @@ struct SettingsView: View {
                 detectionTab
                     .tabItem {
                         Label("Detection", systemImage: "scope")
+                    }
+
+                trackLogTab
+                    .tabItem {
+                        Label("Tracks", systemImage: "map")
                     }
 
                 aboutTab
@@ -48,6 +54,15 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Track logging") {
+                ForEach(DetectionSettingsStore.trackObjectTypes) { type in
+                    Toggle(type.title, isOn: Binding(
+                        get: { settings.isTrackEnabled(type) },
+                        set: { settings.setTrackEnabled($0, for: type) }
+                    ))
+                }
+            }
+
             Section("Border colors") {
                 ForEach(DetectableObjectType.allCases) { type in
                     HStack {
@@ -76,6 +91,80 @@ struct SettingsView: View {
         }
     }
 
+    private var trackLogTab: some View {
+        List {
+            Section("Tracking") {
+                ForEach(DetectionSettingsStore.trackObjectTypes) { type in
+                    Toggle(type.title, isOn: Binding(
+                        get: { settings.isTrackEnabled(type) },
+                        set: { settings.setTrackEnabled($0, for: type) }
+                    ))
+                }
+
+                LabeledContent("Status", value: trackLogger.statusMessage)
+                LabeledContent("Log file", value: trackLogger.logFilePath)
+                    .font(.caption)
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    trackLogger.clearLogs()
+                } label: {
+                    Label("Clear Track Logs", systemImage: "trash")
+                }
+                .disabled(trackLogger.entries.isEmpty)
+            }
+
+            Section("Recent logs") {
+                if trackLogger.entries.isEmpty {
+                    Text("No object tracks saved yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(trackLogger.entries) { entry in
+                        trackLogRow(entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private func trackLogRow(_ entry: ObjectTrackLogEntry) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(entry.objectTitle)
+                    .font(.headline)
+                Spacer()
+                Text(Self.timeFormatter.string(from: entry.detectedAt))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(String(
+                format: "Object %.6f, %.6f - %.1f m - %.0f%%",
+                entry.objectCoordinate.latitude,
+                entry.objectCoordinate.longitude,
+                entry.distanceMeters,
+                entry.confidence * 100
+            ))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let movement = entry.movement {
+                Text(String(
+                    format: "Track %.1f m @ %.0f deg - %.1f m/s - next %.6f, %.6f",
+                    movement.distanceFromPreviousMeters,
+                    movement.bearingFromPreviousDegrees,
+                    movement.speedMetersPerSecond,
+                    movement.predictedLatitude,
+                    movement.predictedLongitude
+                ))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
     private var aboutTab: some View {
         List {
             Section("Vozhyk Drone Detector") {
@@ -92,4 +181,11 @@ struct SettingsView: View {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "\(short) (\(build))"
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter
+    }()
 }

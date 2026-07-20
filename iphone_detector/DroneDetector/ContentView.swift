@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var radioScanner = RadioScanner()
     @StateObject private var locationManager = LocationPermissionManager()
     @StateObject private var detectionSettings = DetectionSettingsStore()
+    @StateObject private var trackLogger = ObjectTrackLogger()
 
     @State private var isScanning = false
     @State private var showSettings = false
@@ -70,8 +71,18 @@ struct ContentView: View {
         .onChange(of: detectionSettings.enabledByType) { _ in
             visionDetector.updateEnabledTypes(detectionSettings.enabledTypes)
         }
+        .onChange(of: visionDetector.detections) { detections in
+            trackLogger.record(
+                detections: detections,
+                enabledTypes: detectionSettings.trackEnabledTypes,
+                sensor: locationManager.sensorSnapshot,
+                frameAspectRatio: visionDetector.frameAspectRatio,
+                horizontalFieldOfViewDegrees: cameraManager.horizontalFieldOfViewDegrees,
+                zoomFactor: cameraManager.currentZoomFactor
+            )
+        }
         .sheet(isPresented: $showSettings) {
-            SettingsView(settings: detectionSettings)
+            SettingsView(settings: detectionSettings, trackLogger: trackLogger)
         }
     }
 
@@ -139,6 +150,7 @@ struct ContentView: View {
         isScanning = false
         cameraManager.stop()
         radioScanner.stop()
+        locationManager.stopSensorUpdates()
     }
 }
 

@@ -64,6 +64,7 @@ private struct DetectionSettingsPayload: Codable {
     let borderColors: [String: String]
     let showDistanceEstimates: Bool?
     let distanceEnabled: [String: Bool]?
+    let trackEnabled: [String: Bool]?
 }
 
 @MainActor
@@ -72,6 +73,7 @@ final class DetectionSettingsStore: ObservableObject {
     @Published var borderColorByType: [DetectableObjectType: BorderColorOption]
     @Published var showDistanceEstimates: Bool
     @Published var distanceEnabledByType: [DetectableObjectType: Bool]
+    @Published var trackEnabledByType: [DetectableObjectType: Bool]
 
     private let defaults = UserDefaults.standard
     private let storageKey = "vozhyk.detection.settings.v1"
@@ -81,12 +83,14 @@ final class DetectionSettingsStore: ObservableObject {
         let defaultEnabled = Dictionary(uniqueKeysWithValues: DetectableObjectType.allCases.map { ($0, true) })
         let defaultColors = Dictionary(uniqueKeysWithValues: DetectableObjectType.allCases.map { ($0, $0.defaultBorderColor) })
         let defaultDistanceEnabled = Dictionary(uniqueKeysWithValues: Self.distanceObjectTypes.map { ($0, false) })
+        let defaultTrackEnabled = Dictionary(uniqueKeysWithValues: Self.trackObjectTypes.map { ($0, false) })
 
         if let data = defaults.data(forKey: storageKey),
            let payload = try? JSONDecoder().decode(DetectionSettingsPayload.self, from: data) {
             var mergedEnabled = defaultEnabled
             var mergedColors = defaultColors
             var mergedDistanceEnabled = defaultDistanceEnabled
+            var mergedTrackEnabled = defaultTrackEnabled
 
             for type in DetectableObjectType.allCases {
                 if let value = payload.enabled[type.rawValue] {
@@ -110,20 +114,31 @@ final class DetectionSettingsStore: ObservableObject {
                 }
             }
 
+            if let trackEnabled = payload.trackEnabled {
+                for type in Self.trackObjectTypes {
+                    if let value = trackEnabled[type.rawValue] {
+                        mergedTrackEnabled[type] = value
+                    }
+                }
+            }
+
             self.enabledByType = mergedEnabled
             self.borderColorByType = mergedColors
             self.distanceEnabledByType = mergedDistanceEnabled
             self.showDistanceEstimates = mergedDistanceEnabled.contains { $0.value }
+            self.trackEnabledByType = mergedTrackEnabled
             migrateDroneDefaultColorsIfNeeded()
         } else {
             self.enabledByType = defaultEnabled
             self.borderColorByType = defaultColors
             self.distanceEnabledByType = defaultDistanceEnabled
             self.showDistanceEstimates = false
+            self.trackEnabledByType = defaultTrackEnabled
         }
     }
 
-    static let distanceObjectTypes: [DetectableObjectType] = [.auto, .human, .planeDrone]
+    static let distanceObjectTypes: [DetectableObjectType] = [.auto, .human, .planeDrone, .drone]
+    static let trackObjectTypes: [DetectableObjectType] = [.auto, .planeDrone, .drone]
 
     var enabledTypes: Set<DetectableObjectType> {
         Set(enabledByType.compactMap { $0.value ? $0.key : nil })
@@ -131,6 +146,10 @@ final class DetectionSettingsStore: ObservableObject {
 
     var distanceEnabledTypes: Set<DetectableObjectType> {
         Set(distanceEnabledByType.compactMap { $0.value ? $0.key : nil })
+    }
+
+    var trackEnabledTypes: Set<DetectableObjectType> {
+        Set(trackEnabledByType.compactMap { $0.value ? $0.key : nil })
     }
 
     func isEnabled(_ type: DetectableObjectType) -> Bool {
@@ -143,6 +162,10 @@ final class DetectionSettingsStore: ObservableObject {
 
     func isDistanceEnabled(_ type: DetectableObjectType) -> Bool {
         distanceEnabledByType[type] ?? false
+    }
+
+    func isTrackEnabled(_ type: DetectableObjectType) -> Bool {
+        trackEnabledByType[type] ?? false
     }
 
     func setEnabled(_ enabled: Bool, for type: DetectableObjectType) {
@@ -170,12 +193,19 @@ final class DetectionSettingsStore: ObservableObject {
         save()
     }
 
+    func setTrackEnabled(_ enabled: Bool, for type: DetectableObjectType) {
+        guard Self.trackObjectTypes.contains(type) else { return }
+        trackEnabledByType[type] = enabled
+        save()
+    }
+
     private func save() {
         let payload = DetectionSettingsPayload(
             enabled: Dictionary(uniqueKeysWithValues: enabledByType.map { ($0.key.rawValue, $0.value) }),
             borderColors: Dictionary(uniqueKeysWithValues: borderColorByType.map { ($0.key.rawValue, $0.value.rawValue) }),
             showDistanceEstimates: showDistanceEstimates,
-            distanceEnabled: Dictionary(uniqueKeysWithValues: distanceEnabledByType.map { ($0.key.rawValue, $0.value) })
+            distanceEnabled: Dictionary(uniqueKeysWithValues: distanceEnabledByType.map { ($0.key.rawValue, $0.value) }),
+            trackEnabled: Dictionary(uniqueKeysWithValues: trackEnabledByType.map { ($0.key.rawValue, $0.value) })
         )
 
         if let data = try? JSONEncoder().encode(payload) {

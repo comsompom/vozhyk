@@ -29,7 +29,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>DroneDetector uses the camera to visually detect drones in the sky.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location access is required by iOS to read nearby Wi-Fi network names for drone RF detection.</string>
+	<string>Vozhyk uses location and compass data to estimate detected object coordinates and to read nearby Wi-Fi network names for drone RF detection.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Vozhyk uses device motion to reset camera zoom while the phone is moving and automatically zoom in when the phone is stable.</string>
 	<key>UIApplicationSceneManifest</key>
