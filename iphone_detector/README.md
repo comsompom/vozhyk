@@ -27,6 +27,8 @@ For long-distance objects, the camera uses automatic zoom assistance. When the u
 
 The app can also show an estimated distance for supported detected objects. This is controlled from Settings and applies only to `human`, `auto`, and `plane_drone` detections, using preset real-world sizes. When several supported objects are visible, the top-right distance badge shows the nearest estimated object. The estimate is adjusted using the camera's current real zoom factor, including automatic zoom ramps.
 
+The app can optionally save object tracks for `auto`, `drone`, and `plane_drone` detections. Track logging is off by default and can be enabled per object in Settings. When enabled, Vozhyk combines the phone GPS coordinate, compass heading, camera field of view, current zoom, detected box offset, and visual distance estimate to save estimated object coordinates and movement history. Barometer pressure and relative altitude are saved as phone sensor context.
+
 The app also performs radio-side checks that are available on iPhone. It scans Bluetooth Low Energy signals and checks Wi-Fi SSID patterns where iOS permits access, looking for known drone/controller signatures such as DJI, Parrot, FPV, and similar radio names. The visual and radio signals are combined into the on-screen threat state.
 
 ## Presentation Video
@@ -45,6 +47,7 @@ Read the full hackathon project description in [about.md](about.md).
 - **Dual-model pipeline**: custom `plane_drone` model plus preserved YOLO general detector
 - **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
 - **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
+- **Optional object track logging** for autos, drones, and plane-drone targets with estimated coordinates and movement history
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar known drone/controller signals
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
@@ -66,7 +69,30 @@ open iphone_detector/DroneDetector.xcodeproj
 3. Choose your iPhone as the run destination.
 4. Press **Run** (⌘R).
 
-On first launch, allow **Camera**, **Bluetooth**, and **Location** (location is required by iOS for Wi-Fi SSID access).
+On first launch, allow **Camera**, **Bluetooth**, and **Location**. Location is used for object coordinate estimates and is also required by iOS for Wi-Fi SSID access.
+
+## Object Track Logging
+
+Track logging is disabled by default. Open **Settings → Tracks** to enable it separately for:
+
+- `auto`
+- `drone`
+- `plane_drone`
+
+The app saves logs as JSON-lines records in the app support directory and shows recent entries in the Tracks tab. Each record includes:
+
+- recognized object type and confidence
+- detection time and tracking/sensor snapshot time
+- estimated object latitude/longitude
+- phone latitude/longitude and GPS horizontal accuracy
+- visual distance estimate
+- compass heading and heading accuracy
+- phone altitude when available
+- barometer relative altitude and pressure when available
+- movement from the previous matched point
+- predicted next latitude/longitude from the last observed speed and bearing
+
+The estimate is a ground-coordinate prediction based on phone GPS, compass, detected box position, camera field of view, zoom, and object distance. The iPhone barometer measures the phone's pressure altitude, not the target object's true altitude.
 
 ## Drone-aware model
 

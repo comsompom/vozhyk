@@ -23,6 +23,7 @@ iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visua
 - **AI detection** via Core ML YOLOv8n (optional) + motion heuristics fallback
 - **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
 - **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
+- **Optional object track logging** for autos, drones, and plane-drone targets using GPS, compass, barometer context, and visual distance estimates
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar devices
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
@@ -44,7 +45,19 @@ open iphone_detector/DroneDetector.xcodeproj
 3. Choose your iPhone as the run destination.
 4. Press **Run** (⌘R).
 
-On first launch, allow **Camera**, **Bluetooth**, and **Location** (location is required by iOS for Wi-Fi SSID access).
+On first launch, allow **Camera**, **Bluetooth**, and **Location**. Location is used for object coordinate estimates and is also required by iOS for Wi-Fi SSID access.
+
+## Object Track Logging
+
+Track logging is disabled by default. In **Settings → Tracks**, logging can be enabled separately for:
+
+- `auto`
+- `drone`
+- `plane_drone`
+
+When enabled, the app stores JSON-lines records containing the recognized object, detection time, tracking/sensor time, estimated object coordinates, phone GPS coordinates, compass heading, distance estimate, barometer context, movement from the previous point, and a simple predicted next coordinate.
+
+The coordinate estimate is calculated from the phone GPS location, compass heading, detected box offset, camera field of view, current zoom, and visual distance estimate. This is a ground-coordinate estimate. The iPhone barometer records phone pressure-altitude context; it does not provide the target object's true altitude.
 
 ## Optional: Add YOLOv8n AI Model
 
