@@ -137,9 +137,19 @@ Current ESP32 test API:
 GET  /status
 POST /iphone/connect
 POST /target
+POST /scan/start
+POST /scan/stop
 ```
 
 The `POST /target` endpoint receives target data from the iPhone, including screen coordinates, object GPS coordinates, object name, object altitude, distance to object, and confidence. See `robot_station/esp_connector/README.md` for exact JSON examples.
+
+Current ESP32 servo test wiring:
+
+- GPIO 25: main horizontal platform servo signal
+- GPIO 26: ray module X-axis servo signal
+- GPIO 27: ray module Y-axis servo signal
+
+The three servos are powered from a separate 7V battery. The ESP32 provides only PWM signal wires, and ESP32 `GND` must be connected to the servo battery ground. The main platform servo scans horizontally from `0` to `180` degrees in `5` degree steps with `2` seconds between steps. The ray X/Y servos move toward the latest detected object screen point received from the iPhone.
 
 The planned hardware concept is:
 
@@ -167,11 +177,9 @@ ESP32
 Positioning ray module points toward the detected drone
 ```
 
-Later, the ESP32 API can be expanded from the current test endpoints into scan and servo-control commands such as:
+Later, the ESP32 API can be expanded from the current test endpoints into more servo-control commands such as:
 
 ```text
-POST /scan/start
-POST /scan/stop
 POST /ray/target
 ```
 
