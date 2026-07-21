@@ -1,0 +1,275 @@
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <WebServer.h>
+#include <WiFi.h>
+
+namespace {
+
+constexpr const char *AP_SSID = "Vozhyk-Robot";
+constexpr const char *AP_PASSWORD = "vozhyk-esp32";
+constexpr uint16_t HTTP_PORT = 80;
+constexpr uint32_t LOG_INTERVAL_MS = 5000;
+
+WebServer server(HTTP_PORT);
+
+struct IPhoneState {
+  bool connected = false;
+  String deviceName = "unknown";
+  IPAddress remoteIp;
+  uint32_t connectedAtMs = 0;
+  uint32_t lastSeenMs = 0;
+};
+
+struct TargetPacket {
+  bool valid = false;
+  String objectName = "unknown";
+  float screenX = 0.0f;
+  float screenY = 0.0f;
+  double latitude = 0.0;
+  double longitude = 0.0;
+  float altitudeMeters = 0.0f;
+  float distanceMeters = 0.0f;
+  float confidence = 0.0f;
+  uint32_t receivedAtMs = 0;
+};
+
+IPhoneState iphone;
+TargetPacket lastTarget;
+uint32_t lastHeartbeatLogMs = 0;
+
+void addCorsHeaders() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+void sendJson(int statusCode, const String &json) {
+  addCorsHeaders();
+  server.send(statusCode, "application/json", json);
+}
+
+void sendOptions() {
+  addCorsHeaders();
+  server.send(204, "text/plain", "");
+}
+
+String requestBody() {
+  if (!server.hasArg("plain")) {
+    return "";
+  }
+  return server.arg("plain");
+}
+
+void logRequest(const char *endpoint) {
+  Serial.printf(
+      "[HTTP] %s from %s, body=%u bytes\n",
+      endpoint,
+      server.client().remoteIP().toString().c_str(),
+      requestBody().length());
+}
+
+bool parseJsonBody(JsonDocument &doc) {
+  const String body = requestBody();
+  if (body.isEmpty()) {
+    sendJson(400, "{\"ok\":false,\"error\":\"missing JSON body\"}");
+    return false;
+  }
+
+  DeserializationError error = deserializeJson(doc, body);
+  if (error) {
+    Serial.printf("[HTTP] JSON parse error: %s\n", error.c_str());
+    sendJson(400, "{\"ok\":false,\"error\":\"invalid JSON\"}");
+    return false;
+  }
+
+  return true;
+}
+
+float jsonFloat(JsonVariantConst root, const char *flatKey, const char *objectKey, const char *nestedKey, float fallback = 0.0f) {
+  if (!root[flatKey].isNull()) {
+    return root[flatKey].as<float>();
+  }
+  if (!root[objectKey][nestedKey].isNull()) {
+    return root[objectKey][nestedKey].as<float>();
+  }
+  return fallback;
+}
+
+double jsonDouble(JsonVariantConst root, const char *flatKey, const char *objectKey, const char *nestedKey, double fallback = 0.0) {
+  if (!root[flatKey].isNull()) {
+    return root[flatKey].as<double>();
+  }
+  if (!root[objectKey][nestedKey].isNull()) {
+    return root[objectKey][nestedKey].as<double>();
+  }
+  return fallback;
+}
+
+String jsonString(JsonVariantConst root, const char *flatKey, const char *objectKey, const char *nestedKey, const char *fallback) {
+  if (!root[flatKey].isNull()) {
+    return root[flatKey].as<const char *>();
+  }
+  if (!root[objectKey][nestedKey].isNull()) {
+    return root[objectKey][nestedKey].as<const char *>();
+  }
+  return fallback;
+}
+
+void markIPhoneSeen(const String &deviceName) {
+  iphone.connected = true;
+  iphone.deviceName = deviceName.isEmpty() ? "unknown" : deviceName;
+  iphone.remoteIp = server.client().remoteIP();
+  iphone.lastSeenMs = millis();
+  if (iphone.connectedAtMs == 0) {
+    iphone.connectedAtMs = iphone.lastSeenMs;
+  }
+}
+
+void handleStatus() {
+  JsonDocument doc;
+  doc["ok"] = true;
+  doc["station"] = "vozhyk-esp32";
+  doc["ap_ssid"] = AP_SSID;
+  doc["ip"] = WiFi.softAPIP().toString();
+  doc["uptime_ms"] = millis();
+  doc["iphone"]["connected"] = iphone.connected;
+  doc["iphone"]["device"] = iphone.deviceName;
+  doc["iphone"]["remote_ip"] = iphone.remoteIp.toString();
+  doc["iphone"]["last_seen_ms"] = iphone.lastSeenMs;
+  doc["target"]["valid"] = lastTarget.valid;
+  doc["target"]["object_name"] = lastTarget.objectName;
+  doc["target"]["screen_x"] = lastTarget.screenX;
+  doc["target"]["screen_y"] = lastTarget.screenY;
+  doc["target"]["latitude"] = lastTarget.latitude;
+  doc["target"]["longitude"] = lastTarget.longitude;
+  doc["target"]["altitude_m"] = lastTarget.altitudeMeters;
+  doc["target"]["distance_m"] = lastTarget.distanceMeters;
+  doc["target"]["confidence"] = lastTarget.confidence;
+  doc["target"]["received_at_ms"] = lastTarget.receivedAtMs;
+
+  String response;
+  serializeJson(doc, response);
+  sendJson(200, response);
+}
+
+void handleIPhoneConnect() {
+  logRequest("/iphone/connect");
+
+  JsonDocument doc;
+  if (!parseJsonBody(doc)) {
+    return;
+  }
+
+  const String deviceName = jsonString(doc.as<JsonVariantConst>(), "device", "iphone", "device", "iphone");
+  markIPhoneSeen(deviceName);
+
+  Serial.printf(
+      "[IPHONE] Connected device=%s remote_ip=%s uptime_ms=%lu\n",
+      iphone.deviceName.c_str(),
+      iphone.remoteIp.toString().c_str(),
+      static_cast<unsigned long>(millis()));
+
+  sendJson(200, "{\"ok\":true,\"message\":\"iphone connected\"}");
+}
+
+void handleTarget() {
+  logRequest("/target");
+
+  JsonDocument doc;
+  if (!parseJsonBody(doc)) {
+    return;
+  }
+
+  JsonVariantConst root = doc.as<JsonVariantConst>();
+  markIPhoneSeen(jsonString(root, "device", "iphone", "device", iphone.deviceName.c_str()));
+
+  TargetPacket packet;
+  packet.valid = true;
+  packet.objectName = jsonString(root, "object_name", "object", "name", "unknown");
+  packet.screenX = jsonFloat(root, "screen_x", "screen", "x", jsonFloat(root, "cx", "screen", "cx"));
+  packet.screenY = jsonFloat(root, "screen_y", "screen", "y", jsonFloat(root, "cy", "screen", "cy"));
+  packet.latitude = jsonDouble(root, "latitude", "object", "latitude");
+  packet.longitude = jsonDouble(root, "longitude", "object", "longitude");
+  packet.altitudeMeters = jsonFloat(root, "altitude_m", "object", "altitude_m", jsonFloat(root, "altitude", "object", "altitude"));
+  packet.distanceMeters = jsonFloat(root, "distance_m", "object", "distance_m", jsonFloat(root, "distance", "object", "distance"));
+  packet.confidence = jsonFloat(root, "confidence", "object", "confidence");
+  packet.receivedAtMs = millis();
+
+  lastTarget = packet;
+
+  Serial.println("[TARGET] Received object target");
+  Serial.printf("  object=%s confidence=%.3f\n", lastTarget.objectName.c_str(), lastTarget.confidence);
+  Serial.printf("  screen=(%.4f, %.4f)\n", lastTarget.screenX, lastTarget.screenY);
+  Serial.printf("  gps=(%.7f, %.7f) altitude=%.2f m distance=%.2f m\n",
+                lastTarget.latitude,
+                lastTarget.longitude,
+                lastTarget.altitudeMeters,
+                lastTarget.distanceMeters);
+  Serial.printf("  iphone=%s remote_ip=%s received_at_ms=%lu\n",
+                iphone.deviceName.c_str(),
+                iphone.remoteIp.toString().c_str(),
+                static_cast<unsigned long>(lastTarget.receivedAtMs));
+
+  sendJson(200, "{\"ok\":true,\"message\":\"target accepted\"}");
+}
+
+void handleNotFound() {
+  addCorsHeaders();
+  server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
+}
+
+void configureHttpApi() {
+  server.on("/", HTTP_GET, handleStatus);
+  server.on("/status", HTTP_GET, handleStatus);
+  server.on("/iphone/connect", HTTP_OPTIONS, sendOptions);
+  server.on("/iphone/connect", HTTP_POST, handleIPhoneConnect);
+  server.on("/target", HTTP_OPTIONS, sendOptions);
+  server.on("/target", HTTP_POST, handleTarget);
+  server.onNotFound(handleNotFound);
+  server.begin();
+}
+
+void startAccessPoint() {
+  WiFi.mode(WIFI_AP);
+  const bool ok = WiFi.softAP(AP_SSID, AP_PASSWORD);
+
+  Serial.println();
+  Serial.println("[BOOT] Vozhyk ESP32 robot station connector");
+  Serial.printf("[WIFI] AP start: %s\n", ok ? "ok" : "failed");
+  Serial.printf("[WIFI] SSID: %s\n", AP_SSID);
+  Serial.printf("[WIFI] Password: %s\n", AP_PASSWORD);
+  Serial.printf("[WIFI] IP: %s\n", WiFi.softAPIP().toString().c_str());
+  Serial.printf("[HTTP] Listening on http://%s:%u\n", WiFi.softAPIP().toString().c_str(), HTTP_PORT);
+}
+
+void logHeartbeat() {
+  const uint32_t now = millis();
+  if (now - lastHeartbeatLogMs < LOG_INTERVAL_MS) {
+    return;
+  }
+  lastHeartbeatLogMs = now;
+
+  Serial.printf(
+      "[STATUS] uptime=%lu ms clients=%d iphone=%s last_target=%s\n",
+      static_cast<unsigned long>(now),
+      WiFi.softAPgetStationNum(),
+      iphone.connected ? iphone.deviceName.c_str() : "not-connected",
+      lastTarget.valid ? lastTarget.objectName.c_str() : "none");
+}
+
+} // namespace
+
+void setup() {
+  Serial.begin(115200);
+  delay(600);
+
+  startAccessPoint();
+  configureHttpApi();
+
+  Serial.println("[READY] Connect iPhone to Vozhyk-Robot Wi-Fi and POST /iphone/connect or /target.");
+}
+
+void loop() {
+  server.handleClient();
+  logHeartbeat();
+}

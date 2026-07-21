@@ -33,6 +33,7 @@ iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visua
 - Mac with **Xcode 15+**
 - iPhone running **iOS 16+** (iPhone 12+ recommended for Neural Engine)
 - Free Apple ID or paid Apple Developer account
+- Visual Studio Code with the **PlatformIO** extension for ESP32 robot-station firmware
 
 ## Open in Xcode
 
@@ -97,20 +98,48 @@ For full RF coverage (433 MHz RC, 5.8 GHz VTX), you still need external hardware
 ## Project Structure
 
 ```
-iphone_detector/
-├── DroneDetector.xcodeproj
-├── DroneDetector/
-│   ├── Camera/          # AVFoundation + Vision
-│   ├── Radio/           # BLE + Wi-Fi RF scanner
-│   ├── Views/           # SwiftUI overlays & HUD
-│   └── Models/          # Core ML model (after download)
-└── scripts/
-    └── download_model.py
+.
+├── README.md
+├── iphone_detector/
+│   ├── DroneDetector.xcodeproj
+│   ├── DroneDetector/
+│   │   ├── Camera/          # AVFoundation + Vision
+│   │   ├── Radio/           # BLE + Wi-Fi RF scanner
+│   │   ├── Views/           # SwiftUI overlays & HUD
+│   │   └── Models/          # Core ML models
+│   └── scripts/
+│       └── download_model.py
+└── robot_station/
+    └── esp_connector/       # PlatformIO ESP32 connector firmware
+        ├── platformio.ini
+        └── src/main.cpp
 ```
 
 ## Next Steps (Part 2)
 
-This app is the **eyes & brain** on the iPhone. Part 2 will connect the iPhone app to a **DOIT ESP32 DEVKIT V1** over Wi-Fi instead of BLE.
+This app is the **eyes & brain** on the iPhone. Part 2 has started with a PlatformIO firmware project for a **DOIT ESP32 DEVKIT V1** over Wi-Fi:
+
+```text
+robot_station/esp_connector
+```
+
+The first ESP32 connector firmware is for testing the iPhone-to-ESP32 link. It starts a Wi-Fi access point, exposes a small HTTP API, and prints serial logs at `115200` baud so received packets can be checked while the ESP32 is connected to a PC.
+
+Current ESP32 test Wi-Fi:
+
+- SSID: `Vozhyk-Robot`
+- Password: `vozhyk-esp32`
+- IP: `192.168.4.1`
+
+Current ESP32 test API:
+
+```text
+GET  /status
+POST /iphone/connect
+POST /target
+```
+
+The `POST /target` endpoint receives target data from the iPhone, including screen coordinates, object GPS coordinates, object name, object altitude, distance to object, and confidence. See `robot_station/esp_connector/README.md` for exact JSON examples.
 
 The planned hardware concept is:
 
@@ -138,12 +167,11 @@ ESP32
 Positioning ray module points toward the detected drone
 ```
 
-The ESP32 will create or join a Wi-Fi network and expose a small control API. The iPhone app will send commands such as:
+Later, the ESP32 API can be expanded from the current test endpoints into scan and servo-control commands such as:
 
 ```text
 POST /scan/start
 POST /scan/stop
-POST /iphone/position
 POST /ray/target
 ```
 
