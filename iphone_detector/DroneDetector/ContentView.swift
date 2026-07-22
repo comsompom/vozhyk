@@ -7,6 +7,7 @@ struct ContentView: View {
     @StateObject private var locationManager = LocationPermissionManager()
     @StateObject private var detectionSettings = DetectionSettingsStore()
     @StateObject private var trackLogger = ObjectTrackLogger()
+    @StateObject private var robotConnector = RobotStationConnector()
 
     @State private var isScanning = false
     @State private var showSettings = false
@@ -58,6 +59,16 @@ struct ContentView: View {
             VStack {
                 Spacer()
                 controlBar
+            }
+
+            VStack {
+                Spacer()
+                HStack {
+                    robotConnectButton
+                    Spacer()
+                }
+                .padding(.leading, 10)
+                .padding(.bottom, 96)
             }
         }
         .onAppear {
@@ -129,6 +140,25 @@ struct ContentView: View {
         }
         .padding(.horizontal)
         .padding(.bottom, 24)
+    }
+
+    private var robotConnectButton: some View {
+        Button {
+            robotConnector.connect()
+        } label: {
+            Image(systemName: robotConnector.state == .connected ? "wifi.router.fill" : "wifi.router")
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 42, height: 42)
+                .background(robotConnector.state.color.opacity(0.24))
+                .foregroundStyle(robotConnector.state.color)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(robotConnector.state.color.opacity(0.75), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(robotConnector.state.title)
     }
 
     private func wireCameraPipeline() {

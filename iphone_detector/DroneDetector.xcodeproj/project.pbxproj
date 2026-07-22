@@ -25,6 +25,7 @@
 		A10000010000000000000010 /* DetectionSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000011 /* DetectionSettings.swift */; };
 		A10000010000000000000011 /* YOLOv8n.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000012 /* YOLOv8n.mlpackage */; };
 		A10000010000000000000012 /* ObjectTracking.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000013 /* ObjectTracking.swift */; };
+		A10000010000000000000013 /* RobotStationConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000020000000000000014 /* RobotStationConnector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 		A10000020000000000000011 /* DetectionSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionSettings.swift; sourceTree = "<group>"; };
 		A10000020000000000000012 /* YOLOv8n.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = YOLOv8n.mlpackage; sourceTree = "<group>"; };
 		A10000020000000000000013 /* ObjectTracking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectTracking.swift; sourceTree = "<group>"; };
+		A10000020000000000000014 /* RobotStationConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobotStationConnector.swift; sourceTree = "<group>"; };
 		A10000030000000000000001 /* DroneDetector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DroneDetector.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -109,6 +111,7 @@
 				A10000020000000000000006 /* RadioScanner.swift */,
 				A10000020000000000000007 /* DroneRFProfile.swift */,
 				A1000002000000000000000C /* LocationPermissionManager.swift */,
+				A10000020000000000000014 /* RobotStationConnector.swift */,
 			);
 			path = Radio;
 			sourceTree = "<group>";
@@ -237,6 +240,7 @@
 				A10000010000000000000010 /* DetectionSettings.swift in Sources */,
 				A10000010000000000000011 /* YOLOv8n.mlpackage in Sources */,
 				A10000010000000000000012 /* ObjectTracking.swift in Sources */,
+				A10000010000000000000013 /* RobotStationConnector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

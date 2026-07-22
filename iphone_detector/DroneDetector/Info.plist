@@ -30,8 +30,15 @@
 	<string>DroneDetector uses the camera to visually detect drones in the sky.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Vozhyk uses location and compass data to estimate detected object coordinates and to read nearby Wi-Fi network names for drone RF detection.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Vozhyk connects to the ESP32 robot station on the local Wi-Fi network.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Vozhyk uses device motion to reset camera zoom while the phone is moving and automatically zoom in when the phone is stable.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
