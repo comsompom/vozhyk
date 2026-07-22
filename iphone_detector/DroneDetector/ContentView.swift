@@ -91,6 +91,13 @@ struct ContentView: View {
                 horizontalFieldOfViewDegrees: cameraManager.horizontalFieldOfViewDegrees,
                 zoomFactor: cameraManager.currentZoomFactor
             )
+            robotConnector.sendAutoHumanTargets(
+                detections: detections,
+                sensor: locationManager.sensorSnapshot,
+                frameAspectRatio: visionDetector.frameAspectRatio,
+                horizontalFieldOfViewDegrees: cameraManager.horizontalFieldOfViewDegrees,
+                zoomFactor: cameraManager.currentZoomFactor
+            )
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(settings: detectionSettings, trackLogger: trackLogger)

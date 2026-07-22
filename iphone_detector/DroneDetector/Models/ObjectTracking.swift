@@ -172,6 +172,106 @@ struct SensorSnapshot {
     let capturedAt: Date
 }
 
+struct ObjectPositionEstimate {
+    let detection: VisionDetection
+    let distanceMeters: Double
+    let coordinate: CLLocationCoordinate2D
+    let bearingDegrees: Double
+    let screenX: Double
+    let screenY: Double
+}
+
+enum ObjectPositionEstimator {
+    static func estimates(
+        in detections: [VisionDetection],
+        enabledTypes: Set<DetectableObjectType>,
+        sensor: SensorSnapshot,
+        frameAspectRatio: CGFloat,
+        horizontalFieldOfViewDegrees: CGFloat,
+        zoomFactor: CGFloat
+    ) -> [ObjectPositionEstimate] {
+        let axisFOV = ObjectDistanceEstimator.effectiveAxisFieldOfViews(
+            frameAspectRatio: frameAspectRatio,
+            horizontalFieldOfViewDegrees: horizontalFieldOfViewDegrees,
+            zoomFactor: zoomFactor
+        )
+
+        return ObjectDistanceEstimator.estimates(
+            in: detections,
+            enabledTypes: enabledTypes,
+            frameAspectRatio: frameAspectRatio,
+            horizontalFieldOfViewDegrees: horizontalFieldOfViewDegrees,
+            zoomFactor: zoomFactor
+        )
+        .map { estimate in
+            let bearing = objectBearingDegrees(
+                phoneHeadingDegrees: sensor.headingDegrees,
+                boundingBox: estimate.detection.boundingBox,
+                horizontalFOV: axisFOV.horizontal
+            )
+            let coordinate = destinationCoordinate(
+                from: sensor.coordinate,
+                distanceMeters: Double(estimate.distanceMeters),
+                bearingDegrees: bearing
+            )
+
+            return ObjectPositionEstimate(
+                detection: estimate.detection,
+                distanceMeters: Double(estimate.distanceMeters),
+                coordinate: coordinate,
+                bearingDegrees: bearing,
+                screenX: Double(estimate.detection.boundingBox.midX),
+                screenY: Double(1 - estimate.detection.boundingBox.midY)
+            )
+        }
+    }
+
+    private static func objectBearingDegrees(
+        phoneHeadingDegrees: Double,
+        boundingBox: CGRect,
+        horizontalFOV: CGFloat
+    ) -> Double {
+        let centerOffset = Double(boundingBox.midX - 0.5)
+        let angleOffset = atan(centerOffset * 2 * Double(tan(horizontalFOV / 2))) * 180 / .pi
+        return normalizedDegrees(phoneHeadingDegrees + angleOffset)
+    }
+
+    private static func destinationCoordinate(
+        from start: CLLocationCoordinate2D,
+        distanceMeters: Double,
+        bearingDegrees: Double
+    ) -> CLLocationCoordinate2D {
+        let earthRadius = 6_371_000.0
+        let angularDistance = distanceMeters / earthRadius
+        let bearing = bearingDegrees * .pi / 180
+        let lat1 = start.latitude * .pi / 180
+        let lon1 = start.longitude * .pi / 180
+
+        let lat2 = asin(
+            sin(lat1) * cos(angularDistance) +
+            cos(lat1) * sin(angularDistance) * cos(bearing)
+        )
+        let lon2 = lon1 + atan2(
+            sin(bearing) * sin(angularDistance) * cos(lat1),
+            cos(angularDistance) - sin(lat1) * sin(lat2)
+        )
+
+        return CLLocationCoordinate2D(
+            latitude: lat2 * 180 / .pi,
+            longitude: normalizedLongitude(lon2 * 180 / .pi)
+        )
+    }
+
+    private static func normalizedDegrees(_ degrees: Double) -> Double {
+        let value = degrees.truncatingRemainder(dividingBy: 360)
+        return value >= 0 ? value : value + 360
+    }
+
+    private static func normalizedLongitude(_ longitude: Double) -> Double {
+        ((longitude + 540).truncatingRemainder(dividingBy: 360)) - 180
+    }
+}
+
 struct ObjectTrackLogEntry: Codable, Identifiable {
     struct Coordinate: Codable {
         let latitude: Double
