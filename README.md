@@ -24,6 +24,7 @@ iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visua
 - **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
 - **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
 - **Optional object track logging** for autos, drones, and plane-drone targets using GPS, compass, barometer context, and visual distance estimates
+- **ESP32 robot-station target transfer** for test detections after the iPhone is connected to the robot Wi-Fi
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar devices
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
@@ -143,6 +144,36 @@ POST /scan/stop
 
 The `POST /target` endpoint receives target data from the iPhone, including screen coordinates, object GPS coordinates, object name, object altitude, distance to object, and confidence. See `robot_station/esp_connector/README.md` for exact JSON examples.
 
+Current iPhone-to-ESP32 connection behavior:
+
+- The iPhone app uses local HTTP to `192.168.4.1`.
+- With a personal Apple development team, iOS cannot programmatically join the ESP32 Wi-Fi AP because the required Hotspot Configuration capability is not available.
+- For testing, manually connect the iPhone Wi-Fi to `Vozhyk-Robot`, then press the small robot button in the app.
+- The robot button is red when disconnected, yellow while connecting, and green after `POST /iphone/connect` succeeds.
+- After the button is green, the app sends detected `auto` and `human` targets to `POST /target` at most once per second.
+
+Current flat target payload from the iPhone:
+
+```json
+{
+  "device": "iPhone Vozhyk",
+  "object_name": "human",
+  "screen_x": 0.52,
+  "screen_y": 0.43,
+  "latitude": 54.687157,
+  "longitude": 25.279652,
+  "altitude_m": 143.2,
+  "distance_m": 18.7,
+  "confidence": 0.84,
+  "phone_latitude": 54.687011,
+  "phone_longitude": 25.279501,
+  "phone_altitude_m": 143.2,
+  "bearing_degrees": 72.4
+}
+```
+
+`altitude_m` is currently the phone GPS altitude when available, or the phone barometer relative altitude fallback. It is not a true independent object altitude.
+
 Current ESP32 servo test wiring:
 
 - GPIO 25: main horizontal platform servo signal
@@ -183,15 +214,19 @@ Later, the ESP32 API can be expanded from the current test endpoints into more s
 POST /ray/target
 ```
 
-When the iPhone detects a `plane_drone`, it will send normalized target coordinates to the ESP32:
+During the current test phase, when the iPhone detects an `auto` or `human` and the robot button is green, it sends normalized target coordinates and estimated GPS position to the ESP32:
 
 ```json
 {
-  "cx": 0.62,
-  "cy": 0.31,
+  "object_name": "auto",
+  "screen_x": 0.62,
+  "screen_y": 0.31,
+  "latitude": 54.687157,
+  "longitude": 25.279652,
+  "altitude_m": 143.2,
+  "distance_m": 82.5,
   "confidence": 0.84,
-  "zoom": 3.0,
-  "label": "plane_drone"
+  "bearing_degrees": 74.1
 }
 ```
 

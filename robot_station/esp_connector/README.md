@@ -18,6 +18,8 @@ The servos must be powered from a separate battery. The ESP32 only provides the 
 - Password: `vozhyk-esp32`
 - ESP32 IP: `192.168.4.1`
 
+For the current iPhone app build, manually join this Wi-Fi network from iOS Settings first. The app cannot auto-join the AP when signed with a personal Apple development team because the required Hotspot Configuration entitlement is not available for personal teams.
+
 ## Upload
 
 Open this folder in Visual Studio Code with the PlatformIO extension:
@@ -96,14 +98,18 @@ Flat payload:
 ```json
 {
   "device": "iPhone Vozhyk",
-  "object_name": "plane_drone",
+  "object_name": "human",
   "screen_x": 0.62,
   "screen_y": 0.31,
   "latitude": 54.687157,
   "longitude": 25.279652,
   "altitude_m": 143.2,
   "distance_m": 82.5,
-  "confidence": 0.84
+  "confidence": 0.84,
+  "phone_latitude": 54.687011,
+  "phone_longitude": 25.279501,
+  "phone_altitude_m": 143.2,
+  "bearing_degrees": 72.4
 }
 ```
 
@@ -119,17 +125,27 @@ Nested payload is also accepted:
     "y": 0.31
   },
   "object": {
-    "name": "plane_drone",
+    "name": "auto",
     "latitude": 54.687157,
     "longitude": 25.279652,
     "altitude_m": 143.2,
     "distance_m": 82.5,
     "confidence": 0.84
+  },
+  "phone": {
+    "latitude": 54.687011,
+    "longitude": 25.279501,
+    "altitude_m": 143.2
+  },
+  "bearing": {
+    "degrees": 72.4
   }
 }
 ```
 
-The firmware logs each target packet with object name, screen coordinates, GPS coordinates, altitude, distance, confidence, iPhone device name, and remote IP.
+The current iPhone app sends detected `auto` and `human` targets after the app's robot button is green. Packets are throttled to at most once per second. The firmware logs each target packet with object name, screen coordinates, GPS coordinates, altitude, distance, confidence, iPhone device name, and remote IP.
+
+`altitude_m` is currently supplied by the iPhone as phone GPS altitude when available, or a phone barometer-relative fallback. It is not a true independent target altitude.
 
 ### Main Platform Scan Control
 

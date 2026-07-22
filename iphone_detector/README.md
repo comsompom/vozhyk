@@ -48,6 +48,7 @@ Read the full hackathon project description in [about.md](about.md).
 - **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
 - **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
 - **Optional object track logging** for autos, drones, and plane-drone targets with estimated coordinates and movement history
+- **ESP32 robot-station connector** with a small red/yellow/green robot button for local target transfer testing
 - **BLE 2.4 GHz scanner** for DJI, Parrot, FPV controllers, and similar known drone/controller signals
 - **Wi-Fi SSID check** for known drone network names (when iOS allows)
 - **On-screen threat HUD**: CLEAR / POSSIBLE DRONE / DRONE DETECTED
@@ -157,6 +158,15 @@ iphone_detector/
 
 ## Next Steps (Part 2)
 
-This app is the **eyes & brain** on the iPhone. The next integration step is sending targeting coordinates to a **DOIT ESP32 DEVKIT V1** over Wi-Fi.
+This app is the **eyes & brain** on the iPhone. The current robot-station integration sends targeting coordinates to a **DOIT ESP32 DEVKIT V1** over Wi-Fi HTTP.
 
-The planned hardware extension is to mount the iPhone on a mobile system, use the camera model to detect a drone in the air, then send the detected target position, confidence, and zoom level over Wi-Fi to the ESP32. The ESP32 will control servos that rotate the iPhone scanning platform and point a dedicated positioning ray toward the detected drone location.
+The iPhone app has a small robot button in the bottom-left control rail. The button is red when disconnected, yellow while connecting, and green after the ESP32 accepts `POST /iphone/connect`.
+
+For the current personal Apple development-team build, iOS cannot auto-join the ESP32 Wi-Fi AP from inside the app because the required Hotspot Configuration entitlement is not available. To test the current HTTP connector, manually join the iPhone to:
+
+- SSID: `Vozhyk-Robot`
+- Password: `vozhyk-esp32`
+
+After the robot button is green, the app sends detected `auto` and `human` objects to `POST http://192.168.4.1/target` at most once per second. The payload includes object name, screen X/Y, estimated object GPS coordinates, distance, confidence, phone GPS, phone altitude, and bearing. The altitude value is currently phone GPS altitude or barometer-relative fallback, not an independently measured target altitude.
+
+The ESP32 controls servos that rotate the iPhone scanning platform and point a dedicated positioning ray toward the latest received target location.
