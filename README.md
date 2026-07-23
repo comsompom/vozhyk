@@ -102,6 +102,18 @@ Latest comparison against the previous checkpoint:
 
 The new checkpoint is kept in the app because validation improved strongly and test precision/mAP50 improved slightly. The fine-tune dataset was cleaned after export and build verification. Future fine-tunes should start from `iphone_detector/runs/drone_detector-4/weights/best.pt`.
 
+## Dataset Preparer
+
+The project includes a standalone Flask dataset-preparer tool for creating YOLO-ready datasets used to fine-tune the drone recognition models:
+
+```text
+dataset_preparer
+```
+
+It helps upload drone videos, extract frames, generate automatic mask and bounding-box proposals, review/approve frames, manually fix masks, accumulate a persistent master dataset, and export detection/segmentation datasets with the app-compatible `plane_drone` class mapping.
+
+Use this tool when collecting new drone-plane training data before running the next fine-tune from the current accepted checkpoint.
+
 ## Optional: Recreate General YOLOv8n Model
 
 The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model.
@@ -142,6 +154,7 @@ For full RF coverage (433 MHz RC, 5.8 GHz VTX), you still need external hardware
 ```
 .
 ├── README.md
+├── dataset_preparer/        # Flask tool for building YOLO fine-tune datasets
 ├── iphone_detector/
 │   ├── DroneDetector.xcodeproj
 │   ├── DroneDetector/

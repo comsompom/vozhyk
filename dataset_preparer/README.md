@@ -2,6 +2,8 @@
 
 Standalone Flask application for preparing YOLO-ready `plane_drone` datasets from video.
 
+This tool is the dataset creation step for future Vozhyk model fine-tunes. Use it to collect and review new drone-plane training data before fine-tuning the current accepted detector checkpoint.
+
 ## Features
 
 - Upload a drone video.
