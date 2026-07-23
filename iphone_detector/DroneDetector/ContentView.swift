@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
@@ -11,6 +12,7 @@ struct ContentView: View {
 
     @State private var isScanning = false
     @State private var showSettings = false
+    @State private var interfaceOrientation: UIInterfaceOrientation = .portrait
 
     private var scannerState: ScannerState {
         ScannerState(
@@ -24,11 +26,17 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+
+            ZStack {
             Color.black.ignoresSafeArea()
 
             if cameraManager.authorizationStatus == .authorized || cameraManager.authorizationStatus == .notDetermined {
-                CameraPreviewView(session: cameraManager.session)
+                CameraPreviewView(
+                    session: cameraManager.session,
+                    interfaceOrientation: interfaceOrientation
+                )
                     .ignoresSafeArea()
 
                 DetectionOverlayView(
@@ -58,7 +66,7 @@ struct ContentView: View {
 
             VStack {
                 Spacer()
-                controlBar
+                controlBar(isLandscape: isLandscape)
             }
 
             VStack {
@@ -68,10 +76,13 @@ struct ContentView: View {
                     Spacer()
                 }
                 .padding(.leading, 10)
-                .padding(.bottom, 96)
+                .padding(.bottom, isLandscape ? 74 : 96)
+            }
             }
         }
         .onAppear {
+            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+            refreshInterfaceOrientation()
             wireCameraPipeline()
             visionDetector.updateEnabledTypes(detectionSettings.enabledTypes)
             startScanning()
@@ -81,6 +92,12 @@ struct ContentView: View {
         }
         .onChange(of: detectionSettings.enabledByType) { _ in
             visionDetector.updateEnabledTypes(detectionSettings.enabledTypes)
+        }
+        .onChange(of: interfaceOrientation) { orientation in
+            cameraManager.updateVideoOrientation(orientation)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            refreshInterfaceOrientation()
         }
         .onChange(of: visionDetector.detections) { detections in
             trackLogger.record(
@@ -125,7 +142,7 @@ struct ContentView: View {
         .padding()
     }
 
-    private var controlBar: some View {
+    private func controlBar(isLandscape: Bool) -> some View {
         HStack(spacing: 16) {
             Button {
                 showSettings = true
@@ -146,7 +163,8 @@ struct ContentView: View {
             .tint(isScanning ? .red : .green)
         }
         .padding(.horizontal)
-        .padding(.bottom, 24)
+        .frame(maxWidth: isLandscape ? 360 : .infinity)
+        .padding(.bottom, isLandscape ? 12 : 24)
     }
 
     private var robotConnectButton: some View {
@@ -174,6 +192,18 @@ struct ContentView: View {
         cameraManager.setFrameHandler { [weak visionDetector] sampleBuffer in
             visionDetector?.process(sampleBuffer: sampleBuffer)
         }
+    }
+
+    private func refreshInterfaceOrientation() {
+        guard let orientation = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })?
+            .interfaceOrientation,
+            orientation.isPortrait || orientation.isLandscape
+        else { return }
+
+        interfaceOrientation = orientation
+        cameraManager.updateVideoOrientation(orientation)
     }
 
     private func startScanning() {

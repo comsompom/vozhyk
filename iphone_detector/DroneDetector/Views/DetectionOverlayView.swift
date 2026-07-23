@@ -109,32 +109,36 @@ struct StatusHUDView: View {
     }
 
     var body: some View {
-        ZStack {
-            HStack {
-                VStack(spacing: 10) {
-                    ForEach(HUDPanel.allCases) { panel in
-                        railButton(for: panel)
+        GeometryReader { geometry in
+            let isLandscape = geometry.size.width > geometry.size.height
+
+            ZStack {
+                HStack {
+                    VStack(spacing: 10) {
+                        ForEach(HUDPanel.allCases) { panel in
+                            railButton(for: panel)
+                        }
                     }
-                }
-                .padding(.leading, 10)
-                .padding(.top, 64)
+                    .padding(.leading, 10)
+                    .padding(.top, isLandscape ? 18 : 64)
 
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            if let selectedPanel {
-                VStack {
                     Spacer()
-                    detailPanel(for: selectedPanel)
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 96)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                if let selectedPanel {
+                    VStack {
+                        Spacer()
+                        detailPanel(for: selectedPanel)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, isLandscape ? 74 : 96)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
+            .animation(.easeInOut(duration: 0.2), value: selectedPanel)
         }
-        .animation(.easeInOut(duration: 0.2), value: selectedPanel)
     }
 
     @ViewBuilder

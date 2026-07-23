@@ -28,6 +28,7 @@ final class CameraManager: NSObject, ObservableObject {
     private var lastZoomStepAt = Date.distantPast
     private var targetZoomFactor: CGFloat = 1.0
     nonisolated(unsafe) private var lastPublishedZoomFactor: CGFloat = 1.0
+    nonisolated(unsafe) private var currentVideoOrientation: AVCaptureVideoOrientation = .portrait
     private var smoothedRotationRate = 0.0
 
     private let stableDelay: TimeInterval = 1.5
@@ -68,6 +69,18 @@ final class CameraManager: NSObject, ObservableObject {
             errorMessage = "Camera access denied — enable in Settings"
         @unknown default:
             errorMessage = "Unknown camera authorization state"
+        }
+    }
+
+    func updateVideoOrientation(_ interfaceOrientation: UIInterfaceOrientation) {
+        guard let orientation = AVCaptureVideoOrientation(interfaceOrientation: interfaceOrientation) else { return }
+
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.currentVideoOrientation = orientation
+            if let connection = self.videoOutput.connection(with: .video) {
+                self.applyVideoOrientation(orientation, to: connection)
+            }
         }
     }
 
@@ -165,13 +178,7 @@ final class CameraManager: NSObject, ObservableObject {
         session.addOutput(videoOutput)
 
         if let connection = videoOutput.connection(with: .video) {
-            if #available(iOS 17.0, *) {
-                if connection.isVideoRotationAngleSupported(90) {
-                    connection.videoRotationAngle = 90
-                }
-            } else if connection.isVideoOrientationSupported {
-                connection.videoOrientation = .portrait
-            }
+            applyVideoOrientation(currentVideoOrientation, to: connection)
             // Stabilization adds delay — disable for tracking.
             if connection.isVideoStabilizationSupported {
                 connection.preferredVideoStabilizationMode = .off
@@ -180,6 +187,11 @@ final class CameraManager: NSObject, ObservableObject {
 
         session.commitConfiguration()
         isConfigured = true
+    }
+
+    nonisolated private func applyVideoOrientation(_ orientation: AVCaptureVideoOrientation, to connection: AVCaptureConnection) {
+        guard connection.isVideoOrientationSupported else { return }
+        connection.videoOrientation = orientation
     }
 
     private func startAutoZoomMonitor() {
