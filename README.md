@@ -225,6 +225,14 @@ Current ESP32 servo test wiring:
 
 The three servos are powered from a separate 7V battery. The ESP32 provides only PWM signal wires, and ESP32 `GND` must be connected to the servo battery ground. The main platform servo scans horizontally from `0` to `180` degrees in `5` degree steps with `2` seconds between steps. The ray X/Y servos move toward the latest detected object screen point received from the iPhone.
 
+Current 3D-printable robot-station part:
+
+```text
+robot_station/3d_printer_parts/iphone_holder.scad
+```
+
+This OpenSCAD part is the first iPhone holder prototype for the robot station. It is intended for 3D printing and includes the holder plate, angled phone support walls, ESP32/pillar box area, servo mounting plate, rounded rear base corners, and raised `VOZHYK` text on the front wall. See `robot_station/3d_printer_parts/README.md` for dimensions and print notes.
+
 The planned hardware concept is:
 
 ```text

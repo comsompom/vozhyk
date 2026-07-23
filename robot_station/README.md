@@ -7,6 +7,16 @@ Robot-side code and hardware integration notes for the Vozhyk drone protector sy
 - `esp_connector/` - PlatformIO firmware for the DOIT ESP32 DEVKIT V1 connector that receives iPhone target data over Wi-Fi HTTP.
 - `3d_printer_parts/` - printable mechanical part notes for the iPhone platform, ESP32 mount, three-servo ray module, battery holder, and future STL/CAD files.
 
+## 3D Printable iPhone Holder
+
+The first robot-station printable part is:
+
+```text
+robot_station/3d_printer_parts/iphone_holder.scad
+```
+
+This OpenSCAD source defines the iPhone holder that will be printed on a 3D printer and mounted on the robot station platform. The current prototype includes the main holder plate, angled phone support walls, ESP32/pillar box area, servo mounting plate and holes, rounded rear base corners, and raised `VOZHYK` text on the front wall.
+
 The first ESP32 firmware starts a Wi-Fi access point, accepts HTTP messages from the iPhone detector app, logs received object target packets over USB serial for testing, and drives three servo signal lines:
 
 - main horizontal platform servo,

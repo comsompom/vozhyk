@@ -43,6 +43,82 @@ Purpose:
 - Allows vertical and horizontal phone placement.
 - Keeps the rear camera unobstructed.
 
+Current source file:
+
+- `iphone_holder.scad`
+
+Current first prototype:
+
+- simple rectangular base plate
+- length: `100 mm`
+- width: `80 mm`
+- height: `3 mm`
+- rear base corners:
+  - radius: `30 mm`
+  - only the two rear corners are rounded
+- front top wall:
+  - width: `78 mm`
+  - height/length upward from plate: `55 mm`
+  - thickness: `3 mm`
+  - angle: `7 degrees` backward from vertical over the plate
+  - raised front label:
+    - text: `VOZHYK`
+    - size: `10 mm`
+    - depth: `0.8 mm`
+    - centered on the outside face of the wall
+- two side walls:
+  - depth: `17 mm`
+  - thickness: `3 mm`
+  - height: `55 mm`
+  - angle: same `7 degrees` as the front wall
+- rear wall connecting the open side-wall ends:
+  - width: `78 mm`
+  - height: `40 mm`
+  - thickness: `3 mm`
+  - angle: same `7 degrees` as the front wall
+- four bottom-plate pillars:
+  - diameter: `2 mm`
+  - height: `17 mm`
+  - first row distance from holder rear wall: `10 mm`
+  - center spacing across plate width: `46 mm`
+  - center spacing along plate length: `23.5 mm`
+- rectangular box around all four pillars:
+  - inner wall distance from outer pillar centers: `3 mm`
+  - wall width/thickness: `2 mm`
+  - height: `22 mm`
+  - front centered slot:
+    - width: `9 mm`
+    - height: `3.5 mm`
+    - top edge: `2 mm` below box top
+- rear center raised plate:
+  - width: `11.5 mm`
+  - length: `22.5 mm`
+  - height: `1 mm`
+  - centered across the main plate width
+  - back edge distance from main plate back edge: `7 mm`
+  - box walls around the raised servo plate:
+    - wall height: `4.5 mm`
+    - wall thickness: `2 mm`
+    - walls rise from the main plate and surround the servo plate instead of sitting on top of it
+  - extra side blocks on the servo frame:
+    - one block on each top/bottom side of the servo frame
+    - width outward from each side: `4 mm`
+    - height: `4.5 mm`
+    - one hole in each block:
+      - diameter: `2 mm`
+      - centered in the block
+      - vertical through-hole from top to bottom
+  - rear-side through-hole:
+    - diameter: `11.5 mm`
+    - centered across the raised plate width
+    - tangent to the rear side of the raised plate
+    - cuts through the raised plate and main base plate
+  - smaller through-hole near the large hole:
+    - diameter: `7 mm`
+    - center distance from large hole center: `7 mm`
+    - positioned forward from the large hole toward the inside of the plate
+    - cuts through the raised plate and main base plate
+
 Design notes:
 
 - Do not cover the rear camera lenses.
