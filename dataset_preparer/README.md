@@ -72,3 +72,24 @@ Approving a frame adds or updates it in the master dataset immediately. Changing
 Zoom affects only the browser review view. Manual mask points are converted back to original image coordinates before saving, so exported masks and YOLO labels stay aligned with the normal image size.
 
 After `Build Master Dataset` succeeds, `Clear Source Projects` removes `workspace/projects` and `workspace/uploads` while keeping `workspace/master_dataset`. Only manually deleting `workspace/master_dataset` starts a fresh master dataset.
+
+## Current Cleanup State
+
+After the latest accepted fine-tune, the temporary master dataset was deleted to recover disk space:
+
+```text
+dataset_preparer/workspace/master_dataset
+```
+
+The workspace currently keeps only the empty placeholder folders:
+
+```text
+dataset_preparer/workspace/projects
+dataset_preparer/workspace/uploads
+```
+
+The trained artifacts were preserved in the iPhone project:
+
+- `iphone_detector/DroneDetector/Models/DroneDetector.mlpackage`
+- `iphone_detector/runs/drone_detector-4/weights/best.pt`
+- `iphone_detector/DroneDetector/Models/model_backups/DroneDetector_before_finetune_20260723.mlpackage`

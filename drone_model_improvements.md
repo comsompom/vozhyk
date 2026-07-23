@@ -8,13 +8,25 @@ The app build uses:
 
 - Model: `iphone_detector/DroneDetector/Models/DroneDetector.mlpackage`
 - Preserved COCO fallback model: `iphone_detector/DroneDetector/Models/YOLOv8n.mlpackage`
-- Dataset: `iphone_detector/datasets/drone_video_draft/data.yaml`
-- Training run: `iphone_detector/runs/drone_detector-2`
-- Source videos: `video_sources/*.mp4`
+- Current training run: `iphone_detector/runs/drone_detector-4`
+- Current checkpoint: `iphone_detector/runs/drone_detector-4/weights/best.pt`
+- Previous checkpoint: `iphone_detector/runs/drone_detector-3/weights/best.pt`
+- Previous app model backup: `iphone_detector/DroneDetector/Models/model_backups/DroneDetector_before_finetune_20260723.mlpackage`
 
-The dataset, training run, export cache, and original uploaded video sources were removed after training to recover local disk space. The trained Core ML app model was kept.
+The latest fine-tune dataset was removed after training/export/build verification to recover local disk space. The trained Core ML app model and fine-tuned checkpoint were kept.
 
-Important: the custom `DroneDetector.mlpackage` was trained only from `plane_drone` draft labels. It includes metadata slots for `auto`, `plane`, `drone`, `bird`, `human`, `bus`, `truck`, and `motorcycle`, but those classes were not meaningfully trained in the first pass. To preserve the previously strong detections for `auto`, `truck`, `plane`, `human`, and the other retained COCO classes, the app intentionally runs the bundled `YOLOv8n.mlpackage` alongside the custom model.
+Important: the custom `DroneDetector.mlpackage` is still trained only from `plane_drone` labels. It includes metadata slots for `auto`, `plane`, `drone`, `bird`, `human`, `bus`, `truck`, and `motorcycle`, but those classes are not meaningfully trained in the custom model. To preserve reliable detections for `auto`, `truck`, `plane`, `human`, and the other retained COCO classes, the app intentionally runs the bundled `YOLOv8n.mlpackage` alongside the custom model.
+
+Latest direct comparison on `yolo_dataset_20260723_181814`:
+
+| Split | Model | Precision | Recall | mAP50 | mAP50-95 |
+|-------|-------|-----------|--------|-------|----------|
+| validation | previous `drone_detector-3` | `0.391` | `0.250` | `0.157` | `0.0421` |
+| validation | new `drone_detector-4` | `0.779` | `0.295` | `0.328` | `0.109` |
+| test | previous `drone_detector-3` | `0.605` | `0.532` | `0.532` | `0.181` |
+| test | new `drone_detector-4` | `0.912` | `0.522` | `0.536` | `0.173` |
+
+Decision: keep `drone_detector-4` in the iPhone app. Validation improved strongly and test precision/mAP50 improved slightly. Test recall and mAP50-95 are slightly lower, so the improvement is not universal.
 
 ## Implemented App Changes
 
@@ -38,7 +50,9 @@ Important: the custom `DroneDetector.mlpackage` was trained only from `plane_dro
 - Kept the multi-frame confirmation gate only for `Drone` and `Plane Drone`. Reliable main-model objects such as `Auto`, `Truck`, `Plane`, and `Human` are published immediately.
 - Added overlap deduplication so a custom `Plane Drone` detection wins over a generic overlapping `Plane` detection, while unrelated classes like `Auto` and `Human` are not suppressed.
 
-## Dataset Creation
+## Historical Dataset Creation
+
+This section documents the old first-pass draft workflow for reference. The current preferred workflow is the Flask dataset preparer in `dataset_preparer/`, followed by fine-tuning from `iphone_detector/runs/drone_detector-4/weights/best.pt`.
 
 Uploaded videos were placed in:
 
@@ -109,7 +123,9 @@ iphone_detector/datasets/drone_video_draft/previews/yolo_world_sheet.jpg
 iphone_detector/datasets/drone_video_draft/previews/plane_drone_sheet.jpg
 ```
 
-## Training
+## Historical First Training
+
+This section is retained as provenance for the earliest model. Do not use this as the default command for the next fine-tune.
 
 MPS was not available in the Python environment:
 
@@ -413,11 +429,12 @@ find iphone_detector/datasets/drone_video_draft/labels -name '*.txt' \
   -exec awk '{count[$1]++} END {for (class in count) print class, count[class]}' {} + | sort -n
 ```
 
-Expected for the current first-pass dataset:
+For a future reviewed export, confirm the expected image counts and class distribution match what was approved in the dataset preparer. The most recent cleaned export had:
 
 ```text
-493 train images
-123 val images
+155 train images
+44 val images
+23 test images
 class 3 only, where 3 = plane_drone
 ```
 
@@ -434,15 +451,15 @@ print('mps_built', torch.backends.mps.is_built())
 PY
 ```
 
-CPU first-pass command:
+CPU fine-tune command:
 
 ```sh
 iphone_detector/.venv/bin/python iphone_detector/scripts/train_drone_model.py \
-  --data iphone_detector/datasets/drone_video_draft/data.yaml \
-  --model iphone_detector/scripts/yolov8n.pt \
-  --imgsz 416 \
-  --epochs 5 \
-  --batch 16 \
+  --data dataset_preparer/workspace/master_dataset/exports/<export>/data_detection.yaml \
+  --model iphone_detector/runs/drone_detector-4/weights/best.pt \
+  --imgsz 640 \
+  --epochs 15 \
+  --batch 8 \
   --device cpu
 ```
 
@@ -450,10 +467,10 @@ Better GPU/MPS training command after label cleanup:
 
 ```sh
 iphone_detector/.venv/bin/python iphone_detector/scripts/train_drone_model.py \
-  --data iphone_detector/datasets/drone_video_draft/data.yaml \
-  --model iphone_detector/scripts/yolov8n.pt \
+  --data dataset_preparer/workspace/master_dataset/exports/<export>/data_detection.yaml \
+  --model iphone_detector/runs/drone_detector-4/weights/best.pt \
   --imgsz 640 \
-  --epochs 50 \
+  --epochs 30 \
   --batch 8 \
   --device mps
 ```
@@ -500,8 +517,8 @@ Run a local prediction on a known validation image:
 ```sh
 iphone_detector/.venv/bin/yolo predict \
   model=iphone_detector/DroneDetector/Models/DroneDetector.mlpackage \
-  source=iphone_detector/datasets/drone_video_draft/images/val/03_001755.jpg \
-  imgsz=416 \
+  source=dataset_preparer/workspace/master_dataset/exports/<export>/detection/images/val/<image>.jpg \
+  imgsz=640 \
   conf=0.25 \
   save_txt=True \
   save_conf=True \

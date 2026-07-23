@@ -9,7 +9,7 @@ OpenAI Build Week 2026
 - SwiftUI
 - Core ML
 - Vision Framework
-- YOLO-World
+- YOLOv8n
 
 feedback id: 019f6a59-5a57-74a2-98dd-8c77f5f37a1a
 
@@ -21,7 +21,7 @@ feedback id: 019f6a59-5a57-74a2-98dd-8c77f5f37a1a
 
 iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visual drone detection and the phone's Bluetooth/Wi-Fi radios to spot drone-like RF signatures.
 
-The app runs live on the iPhone and automatically analyzes the camera stream. It detects common visible objects such as autos, humans, trucks, buses, motorcycles, birds, and planes with the bundled YOLO model, while a separate custom Core ML model detects `plane_drone` objects from our own fine-tuned training data. This dual-model setup keeps normal object recognition available while improving detection of the drone/plane target class.
+The app runs live on the iPhone and automatically analyzes the camera stream. It detects common visible objects such as autos, humans, trucks, buses, motorcycles, birds, and planes with the bundled YOLOv8n model, while a separate custom Core ML model detects `plane_drone` objects from our own fine-tuned training data. This dual-model setup keeps normal object recognition available while improving detection of the drone/plane target class.
 
 For long-distance objects, the camera uses automatic zoom assistance. When the user holds the iPhone stable for a short moment, the app gradually zooms the real camera feed up to 5x so small distant flying objects become easier for the model to inspect. If the phone moves or turns again, zoom resets back to the default view.
 
@@ -42,6 +42,7 @@ Read the full hackathon project description in [about.md](about.md).
 ## Features
 
 - **Live camera feed** with bounding-box overlays
+- **Vertical and horizontal screen support** with camera preview, detection boxes, and controls adjusted for phone rotation
 - **General object detection** for autos, humans, trucks, buses, motorcycles, birds, and planes
 - **Fine-tuned plane-drone detection** using our custom Core ML model trained from reviewed video data
 - **Dual-model pipeline**: custom `plane_drone` model plus preserved YOLO general detector
@@ -95,21 +96,51 @@ The app saves logs as JSON-lines records in the app support directory and shows 
 
 The estimate is a ground-coordinate prediction based on phone GPS, compass, detected box position, camera field of view, zoom, and object distance. The iPhone barometer measures the phone's pressure altitude, not the target object's true altitude.
 
-## Drone-aware model
+## Screen Orientation
 
-The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model.
+The camera view now follows the active iPhone orientation. Vertical and horizontal placement both work: the `AVCaptureVideoPreviewLayer` and `AVCaptureVideoDataOutput` use the same orientation, so detection boxes stay aligned with the live video. The left HUD rail remains on the left side, while the bottom Settings/Start controls and robot connector button adjust spacing in horizontal mode.
 
-**Important:** use a project venv. Global NumPy 2.x breaks Core ML export (`Numpy is not available` / `_ARRAY_API not found`).
+## Drone-Aware Model
 
-```bash
-cd iphone_detector
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r scripts/requirements.txt
-python scripts/download_model.py
+The app currently uses:
+
+- `DroneDetector/Models/DroneDetector.mlpackage` for the custom `plane_drone` detector.
+- `DroneDetector/Models/YOLOv8n.mlpackage` for the preserved general detector.
+
+The latest accepted fine-tune was trained from:
+
+```text
+iphone_detector/runs/drone_detector-3/weights/best.pt
 ```
 
-The project uses `DroneDetector/Models/DroneDetector.mlpackage`, a YOLO-World model configured only for: Auto (car), Plane, Drone, Bird, Human, Bus, Truck, and Motorcycle. After a successful Run, the HUD should show **AI Model Ready** / `YOLO-World Core ML`.
+The new checkpoint is:
+
+```text
+iphone_detector/runs/drone_detector-4/weights/best.pt
+```
+
+It was exported into the app as:
+
+```text
+DroneDetector/Models/DroneDetector.mlpackage
+```
+
+The previous app model was backed up at:
+
+```text
+DroneDetector/Models/model_backups/DroneDetector_before_finetune_20260723.mlpackage
+```
+
+The new checkpoint is kept because validation improved strongly and test precision/mAP50 improved slightly:
+
+| Split | Model | Precision | Recall | mAP50 | mAP50-95 |
+|-------|-------|-----------|--------|-------|----------|
+| validation | previous | `0.391` | `0.250` | `0.157` | `0.0421` |
+| validation | new | `0.779` | `0.295` | `0.328` | `0.109` |
+| test | previous | `0.605` | `0.532` | `0.532` | `0.181` |
+| test | new | `0.912` | `0.522` | `0.536` | `0.173` |
+
+The dataset used for this fine-tune was removed after export/build verification. Future fine-tunes should start from `iphone_detector/runs/drone_detector-4/weights/best.pt`.
 
 ### Branding
 
@@ -117,19 +148,23 @@ The project uses `DroneDetector/Models/DroneDetector.mlpackage`, a YOLO-World mo
 - **Launch / splash:** `app_start.png` → `LaunchScreen.storyboard` + in-app `SplashView` (~1.2s)
 - **Home screen name:** **Vozhyk**
 
-YOLO-World supports a real `drone` prompt without treating kites as drones. The model is intentionally restricted to the app's existing object list, and the app requires three spatially consistent model detections before it displays an alert.
+Use a project venv. Global NumPy 2.x breaks Core ML export (`Numpy is not available` / `_ARRAY_API not found`).
 
-To make a real detector, collect and label images with these classes: `drone`, `bird`, `aircraft`, and `kite`. Include clouds, branches, glare, insects, and moving-camera scenes as unlabelled hard negatives. Keep each video/flight recording entirely within one of train, validation, or test splits.
+For the next fine-tune, create a reviewed YOLO detection export with the dataset preparer, then train from the latest checkpoint:
 
 ```bash
 cd iphone_detector
 source .venv/bin/activate
-cp datasets/drone.yaml.example datasets/drone.yaml
-# Edit the dataset path in datasets/drone.yaml
-python scripts/train_drone_model.py --data datasets/drone.yaml --device mps
+python scripts/train_drone_model.py \
+  --data ../dataset_preparer/workspace/master_dataset/exports/<export>/data_detection.yaml \
+  --model runs/drone_detector-4/weights/best.pt \
+  --imgsz 640 \
+  --epochs 15 \
+  --batch 8 \
+  --device cpu
 ```
 
-The script exports `DroneDetector/Models/DroneDetector.mlpackage`. Drag it into the Xcode target. The app automatically prefers this custom model over the bundled COCO model.
+Use `--device mps` or CUDA `--device 0` when available. The script exports `DroneDetector/Models/DroneDetector.mlpackage`.
 
 ## Radio Detection Notes
 
@@ -151,9 +186,10 @@ iphone_detector/
 │   ├── Camera/          # AVFoundation + Vision
 │   ├── Radio/           # BLE + Wi-Fi RF scanner
 │   ├── Views/           # SwiftUI overlays & HUD
-│   └── Models/          # Core ML model (after download)
+│   └── Models/          # Core ML models and backups
 └── scripts/
-    └── download_model.py
+    ├── download_model.py
+    └── train_drone_model.py
 ```
 
 ## Next Steps (Part 2)

@@ -20,7 +20,8 @@ iPhone app for the **Vozhyk** anti-drone project. Uses the rear camera for visua
 ## Features
 
 - **Live camera feed** with bounding-box overlays
-- **AI detection** via Core ML YOLOv8n (optional) + motion heuristics fallback
+- **Vertical and horizontal screen support** with camera preview, detection boxes, and controls adjusted for phone rotation
+- **AI detection** via a dual Core ML pipeline: fine-tuned `plane_drone` model plus preserved YOLOv8n general detector
 - **Automatic camera zoom** when the iPhone is stable, up to 5x for distant object inspection
 - **Optional distance estimates** for humans, autos, and plane-drone targets, adjusted for current camera zoom
 - **Optional object track logging** for autos, drones, and plane-drone targets using GPS, compass, barometer context, and visual distance estimates
@@ -61,7 +62,47 @@ When enabled, the app stores JSON-lines records containing the recognized object
 
 The coordinate estimate is calculated from the phone GPS location, compass heading, detected box offset, camera field of view, current zoom, and visual distance estimate. This is a ground-coordinate estimate. The iPhone barometer records phone pressure-altitude context; it does not provide the target object's true altitude.
 
-## Optional: Add YOLOv8n AI Model
+## Screen Orientation
+
+The app supports both vertical and horizontal iPhone placement. When the phone is rotated onto its side for a wider sky view, the camera preview and video output rotate together, so Vision receives frames in the same orientation shown on screen. Detection boxes, HUD controls, the ESP32 robot button, and the bottom Settings/Start controls adjust to the active orientation.
+
+## Drone Plane Model
+
+The app currently uses two Core ML models:
+
+- `DroneDetector/Models/DroneDetector.mlpackage` for the custom `plane_drone` detector.
+- `DroneDetector/Models/YOLOv8n.mlpackage` for general COCO detections such as autos, humans, trucks, buses, motorcycles, birds, and planes.
+
+The latest accepted fine-tune is:
+
+```text
+iphone_detector/runs/drone_detector-4/weights/best.pt
+```
+
+It was exported into the iOS app as:
+
+```text
+iphone_detector/DroneDetector/Models/DroneDetector.mlpackage
+```
+
+The previous app model was backed up at:
+
+```text
+iphone_detector/DroneDetector/Models/model_backups/DroneDetector_before_finetune_20260723.mlpackage
+```
+
+Latest comparison against the previous checkpoint:
+
+| Split | Model | Precision | Recall | mAP50 | mAP50-95 |
+|-------|-------|-----------|--------|-------|----------|
+| validation | previous | `0.391` | `0.250` | `0.157` | `0.0421` |
+| validation | new | `0.779` | `0.295` | `0.328` | `0.109` |
+| test | previous | `0.605` | `0.532` | `0.532` | `0.181` |
+| test | new | `0.912` | `0.522` | `0.536` | `0.173` |
+
+The new checkpoint is kept in the app because validation improved strongly and test precision/mAP50 improved slightly. The fine-tune dataset was cleaned after export and build verification. Future fine-tunes should start from `iphone_detector/runs/drone_detector-4/weights/best.pt`.
+
+## Optional: Recreate General YOLOv8n Model
 
 The app works immediately with motion-based aerial object detection. For better accuracy, add a YOLO model.
 
@@ -75,7 +116,7 @@ pip install -r scripts/requirements.txt
 python scripts/download_model.py
 ```
 
-Then in Xcode: if the model is not already listed under `DroneDetector/Models`, drag `DroneDetector/Models/YOLOv8n.mlpackage` into the project and ensure **Target Membership → DroneDetector** is checked. After a successful Run, the HUD should show **AI Model Ready** / `YOLOv8n Core ML`.
+Then in Xcode: if the model is not already listed under `DroneDetector/Models`, drag `DroneDetector/Models/YOLOv8n.mlpackage` into the project and ensure **Target Membership → DroneDetector** is checked.
 
 ### Branding
 
@@ -83,7 +124,7 @@ Then in Xcode: if the model is not already listed under `DroneDetector/Models`, 
 - **Launch / splash:** `app_start.png` → `LaunchScreen.storyboard` + in-app `SplashView` (~1.2s)
 - **Home screen name:** **Vozhyk**
 
-YOLOv8n detects COCO classes including **airplane**, **bird**, and **kite** — useful proxies for drones until you train a custom drone-only model. The HUD labels these as possible aerial/drone detections.
+YOLOv8n detects COCO classes used by the general detector. The custom `DroneDetector.mlpackage` remains responsible for `plane_drone`.
 
 ## Radio Detection Notes
 
@@ -107,9 +148,10 @@ For full RF coverage (433 MHz RC, 5.8 GHz VTX), you still need external hardware
 │   │   ├── Camera/          # AVFoundation + Vision
 │   │   ├── Radio/           # BLE + Wi-Fi RF scanner
 │   │   ├── Views/           # SwiftUI overlays & HUD
-│   │   └── Models/          # Core ML models
+│   │   └── Models/          # Core ML models and backups
 │   └── scripts/
-│       └── download_model.py
+│       ├── download_model.py
+│       └── train_drone_model.py
 └── robot_station/
     └── esp_connector/       # PlatformIO ESP32 connector firmware
         ├── platformio.ini
