@@ -153,6 +153,7 @@ For full RF coverage (433 MHz RC, 5.8 GHz VTX), you still need external hardware
 │       ├── download_model.py
 │       └── train_drone_model.py
 └── robot_station/
+    ├── 3d_printer_parts/    # Printable robot-station mechanical parts
     └── esp_connector/       # PlatformIO ESP32 connector firmware
         ├── platformio.ini
         └── src/main.cpp

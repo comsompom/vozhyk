@@ -5,6 +5,7 @@ Robot-side code and hardware integration notes for the Vozhyk drone protector sy
 ## Folders
 
 - `esp_connector/` - PlatformIO firmware for the DOIT ESP32 DEVKIT V1 connector that receives iPhone target data over Wi-Fi HTTP.
+- `3d_printer_parts/` - printable mechanical part notes for the iPhone platform, ESP32 mount, three-servo ray module, battery holder, and future STL/CAD files.
 
 The first ESP32 firmware starts a Wi-Fi access point, accepts HTTP messages from the iPhone detector app, logs received object target packets over USB serial for testing, and drives three servo signal lines:
 
